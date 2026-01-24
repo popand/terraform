@@ -1,0 +1,390 @@
+openapi: 3.0.0
+info:
+  title: Terraform Documentation Agent API
+  version: 1.0.0
+  description: |
+    API for the Terraform Documentation and Operations Agent.
+    This agent can read, analyze, and manage Terraform infrastructure code.
+
+paths:
+  /read-files:
+    post:
+      operationId: readTerraformFiles
+      summary: Read Terraform files from S3 bucket
+      description: |
+        Retrieves all .tf and .tpl files from the specified S3 location.
+        Use this to load Terraform code for analysis or documentation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bucket:
+                  type: string
+                  description: S3 bucket name containing Terraform files
+                prefix:
+                  type: string
+                  description: S3 prefix/folder path (default: terraform/)
+                  default: terraform/
+              required:
+                - bucket
+      responses:
+        '200':
+          description: Successfully retrieved files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        content:
+                          type: string
+                        size:
+                          type: integer
+                  count:
+                    type: integer
+                  total_size_bytes:
+                    type: integer
+
+  /analyze:
+    post:
+      operationId: analyzeTerraformModule
+      summary: Analyze Terraform file content
+      description: |
+        Parses Terraform code and extracts resources, modules, variables, outputs, and data sources.
+        Use this to understand the structure of Terraform configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Terraform file content to analyze
+                filename:
+                  type: string
+                  description: Name of the file being analyzed
+              required:
+                - content
+      responses:
+        '200':
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  filename:
+                    type: string
+                  resources:
+                    type: array
+                  modules:
+                    type: array
+                  variables:
+                    type: array
+                  outputs:
+                    type: array
+                  data_sources:
+                    type: array
+                  summary:
+                    type: object
+
+  /generate-docs:
+    post:
+      operationId: generateDocumentation
+      summary: Save generated documentation
+      description: |
+        Saves the generated markdown documentation to S3.
+        Use after generating documentation content to persist it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Markdown documentation content
+                filename:
+                  type: string
+                  description: Output filename (optional, auto-generated if not provided)
+                type:
+                  type: string
+                  description: Document type (documentation, analysis, report, plan)
+                  default: documentation
+              required:
+                - content
+      responses:
+        '200':
+          description: Documentation saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  s3_uri:
+                    type: string
+                  filename:
+                    type: string
+                  download_url:
+                    type: string
+
+  /terraform-operation:
+    post:
+      operationId: executeTerraformOperation
+      summary: Execute a Terraform operation
+      description: |
+        Triggers a Terraform operation (plan, apply, destroy, etc.) via CodeBuild.
+        WARNING: apply and destroy require explicit auto_approve=true for safety.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operation:
+                  type: string
+                  description: Terraform operation to execute
+                  enum:
+                    - plan
+                    - apply
+                    - destroy
+                    - validate
+                    - output
+                    - state
+                auto_approve:
+                  type: boolean
+                  description: Required for apply/destroy operations. Must be true to proceed.
+                  default: false
+                variables:
+                  type: object
+                  description: Terraform variables to pass (TF_VAR_*)
+                  additionalProperties:
+                    type: string
+              required:
+                - operation
+      responses:
+        '200':
+          description: Operation started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  execution_id:
+                    type: string
+                  build_id:
+                    type: string
+                  operation:
+                    type: string
+                  status:
+                    type: string
+                  console_url:
+                    type: string
+                  message:
+                    type: string
+
+  /get-status:
+    post:
+      operationId: getTerraformStatus
+      summary: Get Terraform deployment status
+      description: |
+        Gets the status of Terraform operations and infrastructure state.
+        Use to check build progress or view deployed resources.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                build_id:
+                  type: string
+                  description: Specific CodeBuild build ID to check (optional)
+                check_type:
+                  type: string
+                  description: Type of status check
+                  enum:
+                    - build_status
+                    - infrastructure_state
+                    - outputs
+                    - all
+                  default: all
+      responses:
+        '200':
+          description: Status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  build:
+                    type: object
+                  infrastructure:
+                    type: object
+                  outputs:
+                    type: object
+                  recent_builds:
+                    type: object
+
+  /modify-code:
+    post:
+      operationId: modifyTerraformCode
+      summary: Modify Terraform code
+      description: |
+        Modifies Terraform files based on specified changes.
+        ALWAYS use dry_run=true first to preview changes before applying.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                modification_type:
+                  type: string
+                  description: Type of modification
+                  enum:
+                    - add_resource
+                    - update_resource
+                    - add_variable
+                    - refactor
+                    - security_fix
+                description:
+                  type: string
+                  description: Human-readable description of the change
+                code_changes:
+                  type: array
+                  description: List of changes to make
+                  items:
+                    type: object
+                    properties:
+                      file:
+                        type: string
+                        description: File to modify
+                      action:
+                        type: string
+                        description: Type of change
+                        enum:
+                          - insert_after
+                          - insert_before
+                          - replace
+                          - append
+                          - delete
+                      anchor:
+                        type: string
+                        description: Text to find for positioning
+                      content:
+                        type: string
+                        description: New content to add
+                      old_content:
+                        type: string
+                        description: Content to replace (for replace action)
+                dry_run:
+                  type: boolean
+                  description: Preview changes without applying (ALWAYS use true first)
+                  default: true
+              required:
+                - code_changes
+      responses:
+        '200':
+          description: Modification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  dry_run:
+                    type: boolean
+                  changes_made:
+                    type: array
+                  backup_location:
+                    type: string
+                  previews:
+                    type: array
+                  message:
+                    type: string
+
+  /run-tests:
+    post:
+      operationId: runInfrastructureTests
+      summary: Run infrastructure tests
+      description: |
+        Runs infrastructure validation tests after deployment.
+        Use to verify that infrastructure is working correctly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                test_suite:
+                  type: string
+                  description: Test suite to run
+                  enum:
+                    - quick
+                    - connectivity
+                    - vpn
+                    - services
+                    - full
+                  default: quick
+                targets:
+                  type: object
+                  description: Target IP addresses (auto-detected if not provided)
+                  properties:
+                    fortigate1_ip:
+                      type: string
+                    fortigate2_ip:
+                      type: string
+                    ubuntu1_ip:
+                      type: string
+                    ubuntu2_ip:
+                      type: string
+      responses:
+        '200':
+          description: Test results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - PASSED
+                      - FAILED
+                      - PARTIAL
+                  test_suite:
+                    type: string
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      passed:
+                        type: integer
+                      failed:
+                        type: integer
+                      manual_check:
+                        type: integer
+                  tests:
+                    type: array
+                  report:
+                    type: string

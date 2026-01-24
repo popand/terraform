@@ -1,0 +1,28 @@
+# AWS Configuration
+aws_region = "us-east-2"
+
+# SSH Key Pair (must exist in AWS)
+key_name = "your-key-pair-name"
+
+# Admin access CIDR (restrict to your IP for security)
+admin_cidr = "0.0.0.0/0"  # Change to your IP: "x.x.x.x/32"
+
+# VPC 1 Configuration
+vpc1_cidr                = "10.0.0.0/16"
+vpc1_public_subnet_cidr  = "10.0.0.0/24"
+vpc1_private_subnet_cidr = "10.0.1.0/24"
+
+# VPC 2 Configuration
+vpc2_cidr                = "10.100.0.0/16"
+vpc2_public_subnet_cidr  = "10.100.0.0/24"
+vpc2_private_subnet_cidr = "10.100.1.0/24"
+
+# FortiGate Configuration
+fortigate_instance_type  = "t3.small"
+fortigate_admin_password = "YourSecurePassword123!"  # Change this!
+
+# Ubuntu Configuration
+ubuntu_instance_type = "t3.micro"
+
+# VPN Configuration
+vpn_psk = "YourSecurePreSharedKey456!"  # Change this!
