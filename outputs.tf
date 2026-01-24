@@ -105,3 +105,31 @@ output "bedrock_agent_usage" {
   description = "Instructions for using the Bedrock Agent"
   value       = var.enable_bedrock_agent ? module.bedrock_agent[0].usage_instructions : "Bedrock Agent not enabled. Set enable_bedrock_agent = true"
 }
+
+# -----------------------------------------------------------------------------
+# Chat UI Outputs
+# -----------------------------------------------------------------------------
+output "chat_ui_url" {
+  description = "URL of the Chat UI"
+  value       = var.enable_chat_ui && var.enable_bedrock_agent ? module.chat_ui[0].website_url : null
+}
+
+output "chat_ui_api_endpoint" {
+  description = "API endpoint for the Chat UI"
+  value       = var.enable_chat_ui && var.enable_bedrock_agent ? module.chat_ui[0].api_endpoint : null
+}
+
+output "chat_ui_bucket" {
+  description = "S3 bucket for Chat UI static files"
+  value       = var.enable_chat_ui && var.enable_bedrock_agent ? module.chat_ui[0].website_bucket_name : null
+}
+
+output "chat_ui_cloudfront_id" {
+  description = "CloudFront distribution ID for cache invalidation"
+  value       = var.enable_chat_ui && var.enable_bedrock_agent ? module.chat_ui[0].cloudfront_distribution_id : null
+}
+
+output "chat_ui_deployment_instructions" {
+  description = "Instructions for deploying the Chat UI"
+  value       = var.enable_chat_ui && var.enable_bedrock_agent ? module.chat_ui[0].deployment_instructions : "Chat UI not enabled. Set enable_chat_ui = true and enable_bedrock_agent = true"
+}

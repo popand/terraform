@@ -101,3 +101,12 @@ variable "enable_bedrock_agent" {
   type        = bool
   default     = false
 }
+
+# -----------------------------------------------------------------------------
+# Chat UI Variables
+# -----------------------------------------------------------------------------
+variable "enable_chat_ui" {
+  description = "Whether to deploy the Chat UI for the Bedrock Agent"
+  type        = bool
+  default     = false
+}

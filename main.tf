@@ -176,3 +176,24 @@ module "bedrock_agent" {
     ManagedBy   = "Terraform"
   }
 }
+
+# -----------------------------------------------------------------------------
+# Chat UI Module (requires Bedrock Agent)
+# -----------------------------------------------------------------------------
+module "chat_ui" {
+  source = "./modules/chat-ui"
+
+  count = var.enable_chat_ui && var.enable_bedrock_agent ? 1 : 0
+
+  project_name   = "terraform-chat"
+  aws_region     = var.aws_region
+  agent_id       = module.bedrock_agent[0].agent_id
+  agent_alias_id = module.bedrock_agent[0].agent_alias_id
+
+  tags = {
+    Project     = "FortiGate-VPN-Demo"
+    Phase       = "2"
+    Component   = "Chat-UI"
+    ManagedBy   = "Terraform"
+  }
+}

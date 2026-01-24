@@ -67,16 +67,16 @@ resource "aws_codebuild_project" "terraform_executor" {
           runtime-versions:
             python: 3.11
           commands:
-            - echo "Installing Terraform $TERRAFORM_VERSION..."
-            - curl -LO "https://releases.hashicorp.com/terraform/$TERRAFORM_VERSION/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
-            - unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+            - echo "Installing Terraform $$TERRAFORM_VERSION..."
+            - curl -LO "https://releases.hashicorp.com/terraform/$$TERRAFORM_VERSION/terraform_$${TERRAFORM_VERSION}_linux_amd64.zip"
+            - unzip "terraform_$${TERRAFORM_VERSION}_linux_amd64.zip"
             - mv terraform /usr/local/bin/
             - terraform version
 
         pre_build:
           commands:
             - echo "Downloading Terraform files from S3..."
-            - aws s3 sync "s3://$TERRAFORM_BUCKET/terraform/" ./terraform/
+            - aws s3 sync "s3://$$TERRAFORM_BUCKET/terraform/" ./terraform/
             - cd terraform
             - echo "Initializing Terraform..."
             - terraform init -input=false -no-color
@@ -84,15 +84,15 @@ resource "aws_codebuild_project" "terraform_executor" {
         build:
           commands:
             - cd terraform
-            - echo "Running Terraform operation: $TF_OPERATION"
+            - echo "Running Terraform operation: $$TF_OPERATION"
             - |
-              case "$TF_OPERATION" in
+              case "$$TF_OPERATION" in
                 "plan")
                   terraform plan -input=false -no-color -out=tfplan
                   terraform show -json tfplan > plan.json
                   ;;
                 "apply")
-                  if [ "$TF_AUTO_APPROVE" = "true" ]; then
+                  if [ "$$TF_AUTO_APPROVE" = "true" ]; then
                     terraform apply -input=false -no-color -auto-approve
                     terraform output -json > outputs.json
                   else
@@ -101,7 +101,7 @@ resource "aws_codebuild_project" "terraform_executor" {
                   fi
                   ;;
                 "destroy")
-                  if [ "$TF_AUTO_APPROVE" = "true" ]; then
+                  if [ "$$TF_AUTO_APPROVE" = "true" ]; then
                     terraform destroy -input=false -no-color -auto-approve
                   else
                     echo "ERROR: auto_approve must be true for destroy operation"
@@ -118,7 +118,7 @@ resource "aws_codebuild_project" "terraform_executor" {
                   terraform state list
                   ;;
                 *)
-                  echo "Unknown operation: $TF_OPERATION"
+                  echo "Unknown operation: $$TF_OPERATION"
                   exit 1
                   ;;
               esac
@@ -129,17 +129,17 @@ resource "aws_codebuild_project" "terraform_executor" {
             - echo "Uploading results to S3..."
             - |
               if [ -f plan.json ]; then
-                aws s3 cp plan.json "s3://$STATE_BUCKET/terraform/plan.json"
+                aws s3 cp plan.json "s3://$$STATE_BUCKET/terraform/plan.json"
               fi
             - |
               if [ -f outputs.json ]; then
-                aws s3 cp outputs.json "s3://$STATE_BUCKET/terraform/outputs.json"
+                aws s3 cp outputs.json "s3://$$STATE_BUCKET/terraform/outputs.json"
               fi
             - |
               if [ -f terraform.tfstate ]; then
-                aws s3 cp terraform.tfstate "s3://$STATE_BUCKET/terraform/terraform.tfstate"
+                aws s3 cp terraform.tfstate "s3://$$STATE_BUCKET/terraform/terraform.tfstate"
               fi
-            - echo "Operation completed: $TF_OPERATION"
+            - echo "Operation completed: $$TF_OPERATION"
 
       cache:
         paths:

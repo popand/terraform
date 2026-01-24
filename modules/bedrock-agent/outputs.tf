@@ -101,36 +101,25 @@ output "codebuild_role_arn" {
 # Usage Instructions
 output "usage_instructions" {
   description = "Instructions for using the Bedrock Agent"
-  value = var.enable_agent ? <<-EOT
-    ## Terraform Documentation Agent
-
-    ### Invoke the Agent
-
-    Using AWS CLI:
-    ```bash
-    aws bedrock-agent-runtime invoke-agent \
-      --agent-id ${aws_bedrockagent_agent.terraform_docs[0].id} \
-      --agent-alias-id ${aws_bedrockagent_agent_alias.production[0].agent_alias_id} \
-      --session-id my-session \
-      --input-text "Read and analyze the Terraform files"
-    ```
-
-    ### Upload Terraform Files
-
-    ```bash
-    aws s3 sync ./terraform s3://${aws_s3_bucket.terraform_files.id}/terraform/ \
-      --exclude ".terraform/*" \
-      --exclude "*.tfstate*" \
-      --exclude "*.pem"
-    ```
-
-    ### Example Prompts
-
-    - "Read all Terraform files and explain what infrastructure they create"
-    - "What resources does the FortiGate module create?"
-    - "Run terraform plan to preview changes"
-    - "Generate documentation for this infrastructure"
-    - "Run connectivity tests on the deployed infrastructure"
-  EOT
-  : "Bedrock Agent not enabled. Set enable_agent = true to create the agent."
+  value = var.enable_agent ? join("\n", [
+    "## Terraform Documentation Agent",
+    "",
+    "### Invoke the Agent",
+    "aws bedrock-agent-runtime invoke-agent \\",
+    "  --agent-id ${aws_bedrockagent_agent.terraform_docs[0].id} \\",
+    "  --agent-alias-id ${aws_bedrockagent_agent_alias.production[0].agent_alias_id} \\",
+    "  --session-id my-session \\",
+    "  --input-text \"Read and analyze the Terraform files\"",
+    "",
+    "### Upload Terraform Files",
+    "aws s3 sync ./terraform s3://${aws_s3_bucket.terraform_files.id}/terraform/ \\",
+    "  --exclude \".terraform/*\" --exclude \"*.tfstate*\" --exclude \"*.pem\"",
+    "",
+    "### Example Prompts",
+    "- Read all Terraform files and explain what infrastructure they create",
+    "- What resources does the FortiGate module create?",
+    "- Run terraform plan to preview changes",
+    "- Generate documentation for this infrastructure",
+    "- Run connectivity tests on the deployed infrastructure"
+  ]) : "Bedrock Agent not enabled. Set enable_agent = true to create the agent."
 }
