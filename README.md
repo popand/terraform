@@ -112,30 +112,42 @@ terraform/
 │   │   ├── variables.tf
 │   │   └── outputs.tf
 │   │
-│   └── bedrock-agent/          # Phase 2: AI Documentation Agent
-│       ├── main.tf             # S3, Bedrock Agent, Action Groups
+│   ├── bedrock-agent/          # Phase 2: AI Documentation Agent
+│   │   ├── main.tf             # S3, Bedrock Agent, Action Groups
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── iam.tf              # IAM roles (Bedrock, Lambda, CodeBuild)
+│   │   ├── lambda.tf           # 7 Lambda functions
+│   │   ├── codebuild.tf        # CodeBuild for Terraform execution
+│   │   ├── openapi-schema.yaml # Action group API schema
+│   │   └── lambda-code/        # Python source files
+│   │
+│   └── chat-ui/                # Phase 3: Web Chat Interface
+│       ├── main.tf             # S3, CloudFront, API Gateway
 │       ├── variables.tf
 │       ├── outputs.tf
-│       ├── iam.tf              # IAM roles (Bedrock, Lambda, CodeBuild)
-│       ├── lambda.tf           # 7 Lambda functions
-│       ├── codebuild.tf        # CodeBuild for Terraform execution
-│       ├── openapi-schema.yaml # Action group API schema
-│       └── lambda-code/        # Python source files
-│           ├── read_files.py
-│           ├── analyze.py
-│           ├── generate.py
-│           ├── terraform_ops.py
-│           ├── get_status.py
-│           ├── modify_code.py
-│           └── run_tests.py
+│       ├── iam.tf              # Lambda execution role
+│       └── lambda-code/
+│           └── chat_handler.py # API handler for Bedrock Agent
+│
+├── chat-ui/                    # React Chat Application
+│   ├── src/
+│   │   ├── App.jsx             # Main chat component
+│   │   ├── main.jsx            # React entry point
+│   │   └── index.css           # Tailwind styles
+│   ├── package.json
+│   └── vite.config.js
 │
 ├── docs/
 │   ├── PHASE1_INFRASTRUCTURE.md      # Detailed infrastructure documentation
 │   ├── PHASE2_BEDROCK_AGENT.md       # AI agent implementation details
-│   └── PHASE2_IMPLEMENTATION_TASKS.md # Step-by-step task list
+│   ├── PHASE2_IMPLEMENTATION_TASKS.md # Step-by-step task list
+│   ├── PRESENTATION.md               # Presentation content
+│   └── slides.html                   # Interactive HTML slides
 │
 ├── scripts/
-│   └── test-infrastructure.sh     # Automated infrastructure tests
+│   ├── test-infrastructure.sh     # Automated infrastructure tests
+│   └── generate-report.sh         # Deployment report generator
 │
 └── requirements/               # Assignment requirements (PDFs)
 ```
@@ -247,6 +259,7 @@ vpn_psk = "YourSecurePreSharedKey456!"  # Change this!
 | `ubuntu_instance_type` | string | `t3.micro` | Ubuntu EC2 instance type |
 | `vpn_psk` | string | - | IPSec VPN pre-shared key |
 | `enable_bedrock_agent` | bool | `false` | Deploy Phase 2 Bedrock AI Agent |
+| `enable_chat_ui` | bool | `false` | Deploy Phase 3 Chat UI (requires agent) |
 
 ---
 
@@ -354,6 +367,8 @@ After deployment, the following outputs are available:
 | `bedrock_agent_alias_id` | Bedrock Agent alias ID (Phase 2) |
 | `bedrock_terraform_bucket` | S3 bucket for Terraform files (Phase 2) |
 | `bedrock_agent_usage` | Usage instructions (Phase 2) |
+| `chat_ui_url` | Chat UI website URL (Phase 3) |
+| `chat_ui_api_endpoint` | Chat UI API endpoint (Phase 3) |
 
 ```bash
 # View all outputs
@@ -506,38 +521,79 @@ A `Makefile` is provided for convenient infrastructure management.
 
 ### Available Commands
 
+#### Initialization
 | Command | Description |
 |---------|-------------|
 | `make init` | Initialize Terraform and download providers |
 | `make validate` | Validate configuration syntax |
 | `make fmt` | Format Terraform files recursively |
 | `make fmt-check` | Check formatting without changes |
-| `make plan` | Create and save execution plan |
-| `make apply` | Apply the saved plan |
-| `make apply-auto` | Apply without confirmation prompt |
-| `make destroy` | Destroy all infrastructure |
-| `make destroy-auto` | Destroy without confirmation prompt |
+
+#### Planning
+| Command | Description |
+|---------|-------------|
+| `make plan` | Plan base infrastructure |
+| `make plan-agent` | Plan with Bedrock Agent enabled |
+| `make plan-full` | Plan full stack (agent + chat UI) |
+
+#### Deployment
+| Command | Description |
+|---------|-------------|
+| `make apply` | Apply saved plan (generates report) |
+| `make apply-auto` | Apply without confirmation |
+| `make apply-agent` | Deploy with Bedrock Agent (syncs files to S3) |
+| `make apply-full` | Deploy full stack (builds UI, syncs files) |
+| `make deploy` | Full pipeline: init → validate → plan → apply |
+| `make deploy-agent` | Full pipeline with Bedrock Agent |
+| `make deploy-full` | Full pipeline: infrastructure + agent + chat UI |
+
+#### Destruction
+| Command | Description |
+|---------|-------------|
+| `make destroy` | Destroy base infrastructure |
+| `make destroy-agent` | Destroy with Bedrock Agent |
+| `make destroy-full` | Destroy full stack |
+| `make destroy-auto` | Destroy without confirmation |
+| `make destroy-agent-auto` | Destroy agent without confirmation |
+| `make destroy-full-auto` | Destroy full stack without confirmation |
+
+#### Chat UI
+| Command | Description |
+|---------|-------------|
+| `make build-ui` | Build React chat application |
+| `make dev-ui` | Start local dev server (mock mode) |
+| `make clean-ui` | Remove UI build artifacts |
+
+#### Utilities
+| Command | Description |
+|---------|-------------|
 | `make output` | Show current outputs |
 | `make refresh` | Refresh state from actual infrastructure |
 | `make state` | List resources in state |
+| `make report` | Generate deployment report |
+| `make sync-terraform` | Sync Terraform files to S3 for agent |
 | `make test` | Run infrastructure tests |
 | `make clean` | Remove plan file and provider cache |
 | `make clean-all` | Remove all Terraform local files |
-| `make setup` | Run init → validate → plan |
-| `make deploy` | Full pipeline: init → validate → plan → apply |
 | `make help` | Show all available commands |
 
 ### Common Workflows
 
 ```bash
-# First-time setup and deploy
-make deploy
+# Deploy everything (infrastructure + agent + chat UI)
+make deploy-full
 
 # Run infrastructure tests
 make test
 
+# Generate deployment report (IPs, URLs, credentials)
+make report
+
+# View chat UI locally (mock mode)
+make dev-ui
+
 # Make changes and redeploy
-make plan
+make plan-full
 make apply
 
 # Check what's deployed
@@ -545,11 +601,23 @@ make output
 make state
 
 # Tear down everything
-make destroy
+make destroy-full
 
 # Clean local files (keep state)
 make clean
 ```
+
+### Deployment Report
+
+After any `apply` command, a deployment report is automatically generated with:
+- All IP addresses (public and private)
+- Management URLs
+- SSH commands
+- Credentials reference
+- Chat UI URL (if enabled)
+- Total resource count
+
+The report is saved to `deployment-report.txt` and displayed in the terminal.
 
 ---
 
@@ -611,28 +679,26 @@ The project includes a complete AI agent built with Amazon Bedrock that can:
 ### Deploy Phase 2
 
 ```bash
-# Deploy Phase 1 + Phase 2 together
-terraform apply -var="enable_bedrock_agent=true"
+# Using Make (Recommended) - automatically syncs files to S3
+make deploy-agent
 
-# Or enable in terraform.tfvars
-echo 'enable_bedrock_agent = true' >> terraform.tfvars
-terraform apply
+# Or using Terraform directly
+terraform apply -var="enable_bedrock_agent=true"
+make sync-terraform  # Upload files to S3
 ```
 
-### Upload Terraform Files to S3
+### Terraform Files S3 Sync
 
-After deployment, upload your Terraform files to the S3 bucket:
+The `make sync-terraform` command (run automatically with `apply-agent` and `apply-full`) uploads your Terraform files to S3 for the agent to analyze. It excludes sensitive files:
 
 ```bash
-# Get bucket name
-BUCKET=$(terraform output -raw bedrock_terraform_bucket)
+# Manual sync
+make sync-terraform
 
-# Upload files
-aws s3 sync . s3://$BUCKET/terraform/ \
-  --exclude ".terraform/*" \
-  --exclude "*.tfstate*" \
-  --exclude "*.pem" \
-  --exclude ".git/*"
+# Files excluded from sync:
+# - .terraform/*, *.tfstate*, *.pem, *.key
+# - .env*, .secrets, deployment-report.txt
+# - node_modules/, .git/, tfplan
 ```
 
 ### Using the Agent
@@ -677,6 +743,64 @@ aws bedrock-agent-runtime invoke-agent \
 | Get Status | `terraform-docs-status` | Check build/infrastructure state |
 | Modify Code | `terraform-docs-modify-code` | Update Terraform files |
 | Run Tests | `terraform-docs-run-tests` | Validate deployed infrastructure |
+
+---
+
+## Phase 3: Chat UI
+
+A web-based chat interface for interacting with the Bedrock Agent.
+
+### Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Browser   │────►│ CloudFront  │────►│  S3 Bucket  │     │             │
+│  (React UI) │     │    CDN      │     │ Static Site │     │   Bedrock   │
+└─────────────┘     └─────────────┘     └─────────────┘     │    Agent    │
+       │                                                     │             │
+       │            ┌─────────────┐     ┌─────────────┐     └─────────────┘
+       └───────────►│ API Gateway │────►│   Lambda    │────────────┘
+                    │  HTTP API   │     │   Handler   │
+                    └─────────────┘     └─────────────┘
+```
+
+### Deploy Chat UI
+
+```bash
+# Deploy everything (infrastructure + agent + chat UI)
+make deploy-full
+
+# Or step by step
+make build-ui                    # Build React app
+terraform apply -var="enable_bedrock_agent=true" -var="enable_chat_ui=true"
+```
+
+### Local Development
+
+Run the chat UI locally in mock mode (no backend required):
+
+```bash
+make dev-ui
+# Opens at http://localhost:5173
+```
+
+### Features
+
+- Real-time chat with Bedrock Agent
+- Markdown rendering for responses
+- Code syntax highlighting
+- Session persistence
+- Loading states and error handling
+- Responsive design
+
+### Chat UI Outputs
+
+| Output | Description |
+|--------|-------------|
+| `chat_ui_url` | CloudFront URL for the chat interface |
+| `chat_ui_api_endpoint` | API Gateway endpoint |
+| `chat_ui_bucket` | S3 bucket for static files |
+| `chat_ui_cloudfront_id` | CloudFront distribution ID |
 
 ---
 
