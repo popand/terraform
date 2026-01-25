@@ -14,7 +14,8 @@ data "aws_region" "current" {}
 # S3 Bucket for Static Website
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "website" {
-  bucket = "${local.resource_prefix}-website-${data.aws_caller_identity.current.account_id}"
+  bucket        = "${local.resource_prefix}-website-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
 
   tags = merge(var.tags, {
     Name = "${local.resource_prefix}-website"

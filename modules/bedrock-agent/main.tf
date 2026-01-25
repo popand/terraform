@@ -56,7 +56,8 @@ locals {
 # -----------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "terraform_files" {
-  bucket = local.terraform_bucket
+  bucket        = local.terraform_bucket
+  force_destroy = true
 
   tags = merge(var.tags, {
     Name    = local.terraform_bucket
@@ -91,7 +92,8 @@ resource "aws_s3_bucket_public_access_block" "terraform_files" {
 }
 
 resource "aws_s3_bucket" "output_docs" {
-  bucket = local.output_bucket
+  bucket        = local.output_bucket
+  force_destroy = true
 
   tags = merge(var.tags, {
     Name    = local.output_bucket
