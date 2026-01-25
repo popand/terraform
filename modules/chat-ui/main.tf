@@ -275,3 +275,33 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
   retention_in_days = 14
   tags              = var.tags
 }
+
+# -----------------------------------------------------------------------------
+# Build and Deploy Chat UI
+# -----------------------------------------------------------------------------
+resource "null_resource" "build_and_deploy_ui" {
+  # Rebuild when source files change
+  triggers = {
+    app_jsx_hash    = filemd5("${path.root}/chat-ui/src/App.jsx")
+    main_jsx_hash   = filemd5("${path.root}/chat-ui/src/main.jsx")
+    index_css_hash  = filemd5("${path.root}/chat-ui/src/index.css")
+    package_hash    = filemd5("${path.root}/chat-ui/package.json")
+    bucket_id       = aws_s3_bucket.website.id
+    cloudfront_id   = aws_cloudfront_distribution.website.id
+  }
+
+  provisioner "local-exec" {
+    working_dir = "${path.root}/chat-ui"
+    command     = <<-EOT
+      npm install && npm run build && \
+      aws s3 sync dist/ s3://${aws_s3_bucket.website.id} --delete && \
+      aws cloudfront create-invalidation --distribution-id ${aws_cloudfront_distribution.website.id} --paths "/*"
+    EOT
+  }
+
+  depends_on = [
+    aws_s3_bucket.website,
+    aws_s3_bucket_policy.website,
+    aws_cloudfront_distribution.website
+  ]
+}
