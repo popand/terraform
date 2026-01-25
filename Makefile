@@ -1,6 +1,6 @@
 .PHONY: init validate fmt plan apply destroy clean output refresh test \
 	plan-agent plan-full apply-agent apply-full deploy-agent deploy-full \
-	destroy-agent destroy-full build-ui clean-ui
+	destroy-agent destroy-full build-ui clean-ui report
 
 # Initialize Terraform and download providers
 init:
@@ -33,18 +33,22 @@ plan-full:
 # Apply the saved plan
 apply:
 	terraform apply tfplan
+	@./scripts/generate-report.sh
 
 # Apply with Bedrock Agent enabled
 apply-agent:
 	terraform apply -var="enable_bedrock_agent=true" -auto-approve
+	@./scripts/generate-report.sh
 
 # Apply full deployment (agent + chat UI)
 apply-full: build-ui
 	terraform apply -var="enable_bedrock_agent=true" -var="enable_chat_ui=true" -auto-approve
+	@./scripts/generate-report.sh
 
 # Apply directly without saving plan first
 apply-auto:
 	terraform apply -auto-approve
+	@./scripts/generate-report.sh
 
 # Destroy all infrastructure (base only)
 destroy:
@@ -117,6 +121,10 @@ state:
 test:
 	./scripts/test-infrastructure.sh
 
+# Generate deployment report
+report:
+	@./scripts/generate-report.sh
+
 # Start Chat UI development server (mock mode)
 dev-ui:
 	cd chat-ui && npm install && npm run dev
@@ -162,6 +170,7 @@ help:
 	@echo "    output        - Show outputs"
 	@echo "    refresh       - Refresh state"
 	@echo "    state         - List resources in state"
+	@echo "    report        - Generate deployment report"
 	@echo "    clean         - Remove plan file and provider cache"
 	@echo "    clean-all     - Remove all Terraform local files"
 	@echo "    setup         - Run init, validate, plan"
