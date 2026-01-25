@@ -138,6 +138,9 @@ resource "aws_network_interface" "private" {
 resource "aws_eip_association" "this" {
   allocation_id        = var.eip_allocation_id
   network_interface_id = aws_network_interface.public.id
+
+  # Wait for the instance to be running before associating EIP
+  depends_on = [aws_instance.this]
 }
 
 # -----------------------------------------------------------------------------

@@ -30,13 +30,13 @@ print_test() {
 
 print_pass() {
     echo -e "${GREEN}PASS${NC}"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 print_fail() {
     echo -e "${RED}FAIL${NC}"
     echo -e "    ${RED}Error: $1${NC}"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
 print_skip() {
@@ -186,13 +186,18 @@ test_cross_vpc_ping() {
         return
     fi
 
-    print_test "Ping from FortiGate 1 to Ubuntu 2 ($UBUNTU2_IP)"
-    PING_RESULT=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-        admin@"$FG1_PUBLIC_IP" "execute ping-options repeat-count 3" 2>/dev/null && \
-        ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-        admin@"$FG1_PUBLIC_IP" "execute ping $UBUNTU2_IP" 2>/dev/null) || true
+    # Get FortiGate private IPs for source-based ping
+    FG1_PRIVATE_IP=$(terraform output -raw fortigate1_private_ip 2>/dev/null) || true
+    FG2_PRIVATE_IP=$(terraform output -raw fortigate2_private_ip 2>/dev/null) || true
 
-    if echo "$PING_RESULT" | grep -q "bytes="; then
+    print_test "Ping from FortiGate 1 to Ubuntu 2 ($UBUNTU2_IP)"
+    # Use source IP from private interface to match VPN phase2 selectors
+    PING_RESULT=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+        admin@"$FG1_PUBLIC_IP" "execute ping-options source $FG1_PRIVATE_IP
+execute ping-options repeat-count 3
+execute ping $UBUNTU2_IP" 2>/dev/null) || true
+
+    if echo "$PING_RESULT" | grep -q "bytes from"; then
         print_pass
     elif [ -z "$PING_RESULT" ]; then
         print_fail "Could not connect via SSH"
@@ -202,11 +207,11 @@ test_cross_vpc_ping() {
 
     print_test "Ping from FortiGate 2 to Ubuntu 1 ($UBUNTU1_IP)"
     PING_RESULT=$(ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-        admin@"$FG2_PUBLIC_IP" "execute ping-options repeat-count 3" 2>/dev/null && \
-        ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-        admin@"$FG2_PUBLIC_IP" "execute ping $UBUNTU1_IP" 2>/dev/null) || true
+        admin@"$FG2_PUBLIC_IP" "execute ping-options source $FG2_PRIVATE_IP
+execute ping-options repeat-count 3
+execute ping $UBUNTU1_IP" 2>/dev/null) || true
 
-    if echo "$PING_RESULT" | grep -q "bytes="; then
+    if echo "$PING_RESULT" | grep -q "bytes from"; then
         print_pass
     elif [ -z "$PING_RESULT" ]; then
         print_fail "Could not connect via SSH"

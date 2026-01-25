@@ -6,20 +6,17 @@ info:
 
 paths:
   /read-files:
-    post:
+    get:
       operationId: readTerraformFiles
       summary: Read Terraform files from S3
       description: Retrieves .tf files from the S3 bucket for analysis
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                prefix:
-                  type: string
-                  description: S3 prefix path
+      parameters:
+        - name: prefix
+          in: query
+          description: S3 prefix path to filter files
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: Files retrieved successfully
@@ -32,26 +29,26 @@ paths:
                     type: array
                     items:
                       type: object
+                      properties:
+                        name:
+                          type: string
+                        content:
+                          type: string
                   count:
                     type: integer
 
   /analyze:
-    post:
+    get:
       operationId: analyzeTerraformModule
       summary: Analyze Terraform code
-      description: Parse and extract resources from Terraform files
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                content:
-                  type: string
-                  description: Terraform file content
-              required:
-                - content
+      description: Parse and extract resources, modules, and variables from Terraform files
+      parameters:
+        - name: file_path
+          in: query
+          description: Path to the Terraform file to analyze
+          required: true
+          schema:
+            type: string
       responses:
         '200':
           description: Analysis complete
@@ -62,28 +59,30 @@ paths:
                 properties:
                   resources:
                     type: array
+                    items:
+                      type: string
                   modules:
                     type: array
+                    items:
+                      type: string
                   variables:
                     type: array
+                    items:
+                      type: string
 
   /generate-docs:
-    post:
+    get:
       operationId: generateDocumentation
-      summary: Save documentation to S3
-      description: Saves markdown documentation to S3 bucket
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                content:
-                  type: string
-                  description: Documentation content
-              required:
-                - content
+      summary: Generate and save documentation to S3
+      description: Creates markdown documentation from analyzed Terraform code and saves to S3
+      parameters:
+        - name: format
+          in: query
+          description: Output format (markdown, json)
+          required: false
+          schema:
+            type: string
+            default: markdown
       responses:
         '200':
           description: Documentation saved
@@ -94,27 +93,35 @@ paths:
                 properties:
                   s3_uri:
                     type: string
+                  status:
+                    type: string
 
   /terraform-operation:
-    post:
+    get:
       operationId: executeTerraformOperation
       summary: Execute Terraform operation
-      description: Run plan, apply, destroy via CodeBuild
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                operation:
-                  type: string
-                  description: Operation type (plan, apply, destroy, validate)
-                auto_approve:
-                  type: boolean
-                  description: Required for apply/destroy
-              required:
-                - operation
+      description: Run terraform plan, apply, destroy, or validate via CodeBuild
+      parameters:
+        - name: operation
+          in: query
+          description: Operation type (plan, apply, destroy, validate, output, state)
+          required: true
+          schema:
+            type: string
+            enum:
+              - plan
+              - apply
+              - destroy
+              - validate
+              - output
+              - state
+        - name: auto_approve
+          in: query
+          description: Auto-approve for apply/destroy operations (requires explicit true)
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Operation started
@@ -127,22 +134,21 @@ paths:
                     type: string
                   status:
                     type: string
+                  message:
+                    type: string
 
   /get-status:
-    post:
+    get:
       operationId: getTerraformStatus
       summary: Get deployment status
-      description: Check build status and infrastructure state
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                build_id:
-                  type: string
-                  description: Build ID to check
+      description: Check CodeBuild status and infrastructure state
+      parameters:
+        - name: build_id
+          in: query
+          description: CodeBuild build ID to check status
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: Status retrieved
@@ -151,38 +157,50 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
+                  build_status:
                     type: string
                   outputs:
                     type: object
+                  resources:
+                    type: array
+                    items:
+                      type: string
 
   /modify-code:
-    post:
+    get:
       operationId: modifyTerraformCode
       summary: Modify Terraform files
-      description: Make changes to Terraform code
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  description: File to modify
-                action:
-                  type: string
-                  description: Action type
-                content:
-                  type: string
-                  description: New content
-                dry_run:
-                  type: boolean
-                  description: Preview only
-              required:
-                - file
-                - action
+      description: Make changes to Terraform code (add, update, delete resources)
+      parameters:
+        - name: file_path
+          in: query
+          description: Path to the Terraform file to modify
+          required: true
+          schema:
+            type: string
+        - name: action
+          in: query
+          description: Modification action (add, update, delete)
+          required: true
+          schema:
+            type: string
+            enum:
+              - add
+              - update
+              - delete
+        - name: resource_type
+          in: query
+          description: Type of resource to modify
+          required: false
+          schema:
+            type: string
+        - name: dry_run
+          in: query
+          description: Preview changes without applying
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: Modification result
@@ -195,22 +213,30 @@ paths:
                     type: string
                   changes:
                     type: array
+                    items:
+                      type: string
+                  preview:
+                    type: string
 
   /run-tests:
-    post:
+    get:
       operationId: runInfrastructureTests
       summary: Run infrastructure tests
-      description: Validate deployed infrastructure
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                test_suite:
-                  type: string
-                  description: Test suite (quick, connectivity, vpn, full)
+      description: Validate deployed infrastructure with automated tests
+      parameters:
+        - name: test_suite
+          in: query
+          description: Test suite to run (quick, connectivity, vpn, services, full)
+          required: false
+          schema:
+            type: string
+            enum:
+              - quick
+              - connectivity
+              - vpn
+              - services
+              - full
+            default: quick
       responses:
         '200':
           description: Test results
@@ -221,5 +247,9 @@ paths:
                 properties:
                   status:
                     type: string
+                  passed:
+                    type: integer
+                  failed:
+                    type: integer
                   summary:
-                    type: object
+                    type: string
