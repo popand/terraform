@@ -1,6 +1,6 @@
 .PHONY: init validate fmt plan apply destroy clean output refresh test \
 	plan-agent plan-full apply-agent apply-full deploy-agent deploy-full \
-	destroy-agent destroy-full build-ui clean-ui report
+	destroy-agent destroy-full build-ui clean-ui report sync-terraform
 
 # Initialize Terraform and download providers
 init:
@@ -38,11 +38,13 @@ apply:
 # Apply with Bedrock Agent enabled
 apply-agent:
 	terraform apply -var="enable_bedrock_agent=true" -auto-approve
+	@$(MAKE) sync-terraform
 	@./scripts/generate-report.sh
 
 # Apply full deployment (agent + chat UI)
 apply-full: build-ui
 	terraform apply -var="enable_bedrock_agent=true" -var="enable_chat_ui=true" -auto-approve
+	@$(MAKE) sync-terraform
 	@./scripts/generate-report.sh
 
 # Apply directly without saving plan first
@@ -125,6 +127,30 @@ test:
 report:
 	@./scripts/generate-report.sh
 
+# Sync Terraform files to S3 bucket for Bedrock Agent
+sync-terraform:
+	@echo "Syncing Terraform files to S3 for Bedrock Agent..."
+	@BUCKET=$$(terraform output -raw bedrock_terraform_bucket 2>/dev/null) && \
+	if [ -n "$$BUCKET" ] && [ "$$BUCKET" != "" ]; then \
+		aws s3 sync . s3://$$BUCKET/terraform/ \
+			--exclude ".terraform/*" \
+			--exclude "*.tfstate*" \
+			--exclude "*.pem" \
+			--exclude "*.key" \
+			--exclude ".env*" \
+			--exclude ".secrets" \
+			--exclude "node_modules/*" \
+			--exclude "chat-ui/node_modules/*" \
+			--exclude "chat-ui/dist/*" \
+			--exclude ".git/*" \
+			--exclude "deployment-report.txt" \
+			--exclude "tfplan" \
+			--delete; \
+		echo "Terraform files synced to s3://$$BUCKET/terraform/"; \
+	else \
+		echo "Bedrock Agent not enabled or bucket not found. Skipping S3 sync."; \
+	fi
+
 # Start Chat UI development server (mock mode)
 dev-ui:
 	cd chat-ui && npm install && npm run dev
@@ -171,6 +197,7 @@ help:
 	@echo "    refresh       - Refresh state"
 	@echo "    state         - List resources in state"
 	@echo "    report        - Generate deployment report"
+	@echo "    sync-terraform- Sync Terraform files to S3 for agent"
 	@echo "    clean         - Remove plan file and provider cache"
 	@echo "    clean-all     - Remove all Terraform local files"
 	@echo "    setup         - Run init, validate, plan"
