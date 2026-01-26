@@ -43,7 +43,7 @@ resource "aws_iam_role_policy" "lambda_bedrock" {
         ]
         Resource = [
           "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:agent/${var.agent_id}",
-          "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:agent-alias/${var.agent_id}/${var.agent_alias_id}"
+          "arn:aws:bedrock:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:agent-alias/${var.agent_id}/*"
         ]
       },
       {

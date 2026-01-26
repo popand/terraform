@@ -42,7 +42,9 @@ resource "aws_iam_role_policy" "bedrock_agent" {
         Effect = "Allow"
         Action = [
           "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream"
+          "bedrock:InvokeModelWithResponseStream",
+          "bedrock:GetFoundationModel",
+          "bedrock:GetFoundationModelAvailability"
         ]
         Resource = [
           "arn:aws:bedrock:${local.region}::foundation-model/*",

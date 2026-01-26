@@ -17,7 +17,7 @@ variable "aws_region" {
 variable "foundation_model" {
   description = "Bedrock foundation model or inference profile to use for the agent"
   type        = string
-  default     = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+  default     = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
 
 variable "agent_idle_session_ttl" {
