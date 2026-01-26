@@ -50,20 +50,20 @@ paths:
 
   /generate-docs:
     get:
-      summary: Generate and save documentation to S3
-      description: Creates markdown documentation from analyzed Terraform code and saves to S3
+      summary: Generate infrastructure documentation
+      description: Creates a concise markdown summary of the Terraform infrastructure suitable for display in chat
       operationId: generateDocumentation
       responses:
         "200":
-          description: Documentation saved
+          description: Documentation generated
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  s3Uri:
+                  documentation:
                     type: string
-                    description: S3 URI of generated documentation
+                    description: Markdown formatted documentation summary
                   status:
                     type: string
                     description: Status of documentation generation

@@ -71,13 +71,14 @@ resource "aws_lambda_function" "generate" {
   role             = aws_iam_role.lambda.arn
   handler          = "generate.lambda_handler"
   runtime          = "python3.11"
-  timeout          = var.lambda_timeout
-  memory_size      = var.lambda_memory
+  timeout          = 30   # Keep under API Gateway limit
+  memory_size      = 512  # Increased for processing
   source_code_hash = data.archive_file.generate.output_base64sha256
 
   environment {
     variables = {
-      OUTPUT_BUCKET = aws_s3_bucket.output_docs.id
+      TERRAFORM_BUCKET = aws_s3_bucket.terraform_files.id
+      OUTPUT_BUCKET    = aws_s3_bucket.output_docs.id
     }
   }
 

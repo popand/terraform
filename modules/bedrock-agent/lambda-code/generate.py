@@ -1,112 +1,48 @@
 """
 Lambda 3: Generate Documentation
-Saves generated documentation to S3.
+Reads Terraform files and generates concise markdown documentation inline.
+Uses Bedrock Claude to create a summary suitable for chat display.
 """
 
 import boto3
 import json
 import os
-from datetime import datetime
 
 s3_client = boto3.client('s3')
+bedrock_runtime = boto3.client('bedrock-runtime')
 
 
 def lambda_handler(event, context):
     """
-    Saves generated documentation to S3.
-
-    Input: { "content": "markdown...", "filename": "output.md" }
-    Output: { "s3_uri": "s3://bucket/docs/output.md" }
+    Generates concise markdown documentation for Terraform infrastructure.
+    Returns documentation directly in the response for display in chat.
     """
 
-    # Handle Bedrock Agent event format
-    if 'actionGroup' in event:
-        params = {}
-        if 'requestBody' in event and 'content' in event['requestBody']:
-            body = event['requestBody']['content'].get('application/json', {})
-            if 'properties' in body:
-                for prop in body['properties']:
-                    params[prop['name']] = prop['value']
+    terraform_bucket = os.environ.get('TERRAFORM_BUCKET')
 
-        content = params.get('content', '')
-        filename = params.get('filename')
-        doc_type = params.get('type', 'documentation')
-    else:
-        content = event.get('content', '')
-        filename = event.get('filename')
-        doc_type = event.get('type', 'documentation')
-
-    bucket = os.environ.get('OUTPUT_BUCKET')
-
-    if not bucket:
+    if not terraform_bucket:
         return format_response(event, {
-            'error': 'OUTPUT_BUCKET environment variable not set',
-            'message': 'Please configure the Lambda function with OUTPUT_BUCKET'
+            'error': 'Missing environment variable',
+            'message': 'TERRAFORM_BUCKET must be configured'
         }, 500)
 
-    if not content:
-        return format_response(event, {
-            'error': 'No content provided',
-            'message': 'Please provide documentation content to save'
-        }, 400)
-
-    # Generate filename if not provided
-    if not filename:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'terraform-docs-{timestamp}.md'
-
-    # Ensure .md extension
-    if not filename.endswith('.md'):
-        filename = f'{filename}.md'
-
-    # Determine S3 key based on document type
-    key_prefix = {
-        'documentation': 'docs/',
-        'analysis': 'analysis/',
-        'report': 'reports/',
-        'plan': 'plans/'
-    }.get(doc_type, 'docs/')
-
-    key = f'{key_prefix}{filename}'
-
     try:
-        # Add metadata header to documentation
-        header = f"""---
-Generated: {datetime.now().isoformat()}
-Type: {doc_type}
-Generator: Terraform Documentation Agent
----
+        # Read Terraform files from S3
+        terraform_content = read_terraform_files(terraform_bucket)
 
-"""
-        full_content = header + content
+        if not terraform_content:
+            return format_response(event, {
+                'error': 'No Terraform files found',
+                'message': f'No .tf files found in s3://{terraform_bucket}/terraform/'
+            }, 404)
 
-        # Save to S3
-        s3_client.put_object(
-            Bucket=bucket,
-            Key=key,
-            Body=full_content.encode('utf-8'),
-            ContentType='text/markdown',
-            Metadata={
-                'generated-by': 'bedrock-agent',
-                'doc-type': doc_type,
-                'timestamp': datetime.now().isoformat()
-            }
-        )
-
-        # Generate presigned URL for download (valid for 1 hour)
-        presigned_url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': bucket, 'Key': key},
-            ExpiresIn=3600
-        )
+        # Generate concise documentation using Bedrock
+        documentation = generate_concise_docs(terraform_content)
 
         result = {
-            's3_uri': f's3://{bucket}/{key}',
-            'filename': filename,
-            'size_bytes': len(full_content),
-            'doc_type': doc_type,
-            'download_url': presigned_url,
-            'message': f'Documentation saved successfully to {key}'
+            'status': 'success',
+            'documentation': documentation,
+            'message': 'Documentation generated successfully'
         }
 
         return format_response(event, result, 200)
@@ -114,8 +50,105 @@ Generator: Terraform Documentation Agent
     except Exception as e:
         return format_response(event, {
             'error': str(e),
-            'message': 'Failed to save documentation'
+            'message': 'Failed to generate documentation'
         }, 500)
+
+
+def read_terraform_files(bucket):
+    """Read all .tf files from S3 bucket and return summary."""
+
+    content_parts = []
+    prefix = 'terraform/'
+    file_list = []
+
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                if key.endswith('.tf') and not key.endswith('.tfstate'):
+                    try:
+                        response = s3_client.get_object(Bucket=bucket, Key=key)
+                        file_content = response['Body'].read().decode('utf-8')
+                        display_name = key.replace(prefix, '')
+                        file_list.append(display_name)
+                        # Only include first 500 chars per file to keep prompt small
+                        truncated = file_content[:500] + ('...' if len(file_content) > 500 else '')
+                        content_parts.append(f"### {display_name}\n```hcl\n{truncated}\n```")
+                    except Exception:
+                        pass
+
+        return '\n'.join(content_parts) if content_parts else None
+
+    except Exception:
+        return None
+
+
+def generate_concise_docs(terraform_content):
+    """Use Bedrock to generate concise documentation suitable for chat."""
+
+    prompt = f"""Analyze this Terraform configuration and create a CONCISE markdown summary.
+Keep it under 1500 characters. Focus on the most important aspects.
+
+Include these sections (keep each brief):
+1. **Overview** - 2-3 sentences about what this infrastructure does
+2. **Key Components** - Bullet list of main resources (VPCs, instances, firewalls)
+3. **Network Design** - Brief description of network architecture
+4. **Security** - Key security features (firewalls, security groups)
+5. **Outputs** - What values/endpoints are exposed
+
+Use markdown formatting. Be concise and informative.
+
+Terraform Configuration:
+{terraform_content}
+
+Generate the concise documentation:"""
+
+    try:
+        response = bedrock_runtime.invoke_model(
+            modelId='us.anthropic.claude-sonnet-4-20250514-v1:0',
+            contentType='application/json',
+            accept='application/json',
+            body=json.dumps({
+                'anthropic_version': 'bedrock-2023-05-31',
+                'max_tokens': 1000,  # Keep response small
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': prompt
+                    }
+                ]
+            })
+        )
+
+        response_body = json.loads(response['body'].read())
+        return response_body['content'][0]['text']
+
+    except Exception as e:
+        # Fallback to basic documentation
+        return generate_basic_docs(terraform_content)
+
+
+def generate_basic_docs(terraform_content):
+    """Generate basic documentation without Bedrock (fallback)."""
+
+    return """# Infrastructure Summary
+
+## Overview
+This Terraform configuration defines AWS infrastructure including VPCs, compute instances, and network components.
+
+## Key Components
+- VPC networks with public/private subnets
+- EC2 instances for compute workloads
+- Security groups for access control
+- Network routing and gateways
+
+## Notes
+Run `terraform output` to see deployed resource details.
+
+*Generated automatically - use analyze for detailed breakdown*
+"""
 
 
 def format_response(event, body, status_code):

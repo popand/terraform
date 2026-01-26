@@ -25,6 +25,9 @@ def lambda_handler(event, context):
     # Handle Bedrock Agent event format
     if 'actionGroup' in event:
         params = {}
+        if 'parameters' in event:
+            for param in event.get('parameters', []):
+                params[param['name']] = param['value']
         if 'requestBody' in event and 'content' in event['requestBody']:
             body = event['requestBody']['content'].get('application/json', {})
             if 'properties' in body:
