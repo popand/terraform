@@ -44,7 +44,12 @@ resource "aws_iam_role_policy" "bedrock_agent" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream"
         ]
-        Resource = "arn:aws:bedrock:${local.region}::foundation-model/*"
+        Resource = [
+          "arn:aws:bedrock:${local.region}::foundation-model/*",
+          "arn:aws:bedrock:us-*::foundation-model/*",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:inference-profile/*",
+          "arn:aws:bedrock:us-east-1::foundation-model/*"
+        ]
       },
       {
         Sid    = "S3Access"
@@ -158,9 +163,15 @@ resource "aws_iam_role_policy" "lambda_custom" {
         Sid    = "BedrockInvoke"
         Effect = "Allow"
         Action = [
-          "bedrock:InvokeModel"
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
         ]
-        Resource = "arn:aws:bedrock:${local.region}::foundation-model/*"
+        Resource = [
+          "arn:aws:bedrock:${local.region}::foundation-model/*",
+          "arn:aws:bedrock:us-*::foundation-model/*",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:inference-profile/*",
+          "arn:aws:bedrock:us-east-1::foundation-model/*"
+        ]
       }
     ]
   })

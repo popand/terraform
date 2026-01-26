@@ -262,7 +262,11 @@ resource "aws_bedrockagent_agent_alias" "production" {
 
   agent_id         = aws_bedrockagent_agent.terraform_docs[0].id
   agent_alias_name = "production"
-  description      = "Production alias for Terraform documentation agent"
+  description      = "Production alias for Terraform documentation agent - ${var.foundation_model}"
 
   tags = var.tags
+
+  lifecycle {
+    replace_triggered_by = [aws_bedrockagent_agent.terraform_docs[0].foundation_model]
+  }
 }

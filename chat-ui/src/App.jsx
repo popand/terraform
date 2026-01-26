@@ -218,6 +218,10 @@ What would you like to do?`
   }
 
   const saveConfig = () => {
+    // Disable mock mode if API endpoint is provided
+    if (apiEndpoint && apiEndpoint.trim()) {
+      setMockMode(false)
+    }
     setShowConfig(false)
   }
 

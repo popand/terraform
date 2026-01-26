@@ -105,6 +105,10 @@ fi
 # Check if Chat UI is enabled
 CHAT_URL=$(get_output "chat_ui_url")
 if [ "$CHAT_URL" != "N/A" ] && [ "$CHAT_URL" != "null" ]; then
+
+# Retrieve API key from SSM
+API_KEY=$(aws ssm get-parameter --name "/terraform-chat/api-key" --with-decryption --query Parameter.Value --output text --region us-east-2 2>/dev/null || echo "N/A")
+
 cat >> "$REPORT_FILE" << EOF
 ================================================================================
                               CHAT UI
@@ -112,8 +116,17 @@ cat >> "$REPORT_FILE" << EOF
 
 Website URL:               $CHAT_URL
 API Endpoint:              $(get_output "chat_ui_api_endpoint")
+API Key:                   $API_KEY
 S3 Bucket:                 $(get_output "chat_ui_bucket")
 CloudFront Distribution:   $(get_output "chat_ui_cloudfront_id")
+
+CONFIGURATION
+-------------
+To use the Chat UI with the real Bedrock Agent (not mock mode):
+1. Open the Website URL above
+2. Click "Settings" in the top right
+3. Enter the API Endpoint and API Key shown above
+4. Click "Save"
 
 DEPLOYMENT INSTRUCTIONS
 -----------------------
