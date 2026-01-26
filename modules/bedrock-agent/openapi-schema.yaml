@@ -51,7 +51,7 @@ paths:
   /generate-docs:
     get:
       summary: Generate infrastructure documentation
-      description: Creates a concise markdown summary of the Terraform infrastructure suitable for display in chat
+      description: Reads Terraform files from S3 and creates a concise markdown summary. This endpoint handles file reading internally - do NOT call read-files first. Returns markdown documentation with Overview, Key Components, Network Design, Security, and Outputs sections.
       operationId: generateDocumentation
       responses:
         "200":
@@ -182,3 +182,73 @@ paths:
                   summary:
                     type: string
                     description: Test summary
+
+  /generate-diagram:
+    get:
+      summary: Generate architecture diagram
+      description: Reads Terraform files and generates a Mermaid diagram of the infrastructure architecture. The diagram is returned as Mermaid code that can be rendered visually. Diagram types available are architecture (default), network, security, or compute.
+      operationId: generateArchitectureDiagram
+      parameters:
+        - name: diagram_type
+          in: query
+          description: Type of diagram to generate - architecture (full infrastructure), network (VPCs, subnets, routing), security (firewalls, security groups), or compute (EC2, servers)
+          required: false
+          schema:
+            type: string
+            default: architecture
+      responses:
+        "200":
+          description: Diagram generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diagram:
+                    type: string
+                    description: Mermaid diagram code that can be rendered visually
+                  diagram_type:
+                    type: string
+                    description: Type of diagram generated
+                  format:
+                    type: string
+                    description: Diagram format (mermaid)
+                  message:
+                    type: string
+                    description: Status message
+
+  /get-deployed-resources:
+    get:
+      summary: Get deployed infrastructure resources
+      description: Retrieves details about currently deployed AWS resources from Terraform state and live AWS. Returns resource information including instance IPs, VPC details, security groups, and current status. Use this when user asks about what is deployed, running instances, IPs, or current infrastructure state.
+      operationId: getDeployedResources
+      parameters:
+        - name: resource_type
+          in: query
+          description: Optional filter by resource type (e.g., instance, vpc, subnet, security_group)
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deployed resources retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: Deployment status (deployed or not_deployed)
+                  summary:
+                    type: string
+                    description: Human-readable summary of deployed resources
+                  resource_count:
+                    type: string
+                    description: Total number of resources
+                  resources_by_type:
+                    type: string
+                    description: Resources grouped by type
+                  resources:
+                    type: string
+                    description: Full list of resources with details

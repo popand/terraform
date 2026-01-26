@@ -73,6 +73,8 @@ resource "aws_iam_role_policy" "bedrock_agent" {
           aws_lambda_function.read_files.arn,
           aws_lambda_function.analyze.arn,
           aws_lambda_function.generate.arn,
+          aws_lambda_function.generate_diagram.arn,
+          aws_lambda_function.get_deployed_resources.arn,
           aws_lambda_function.terraform_ops.arn,
           aws_lambda_function.get_status.arn,
           aws_lambda_function.modify_code.arn,
@@ -173,6 +175,21 @@ resource "aws_iam_role_policy" "lambda_custom" {
           "arn:aws:bedrock:us-*::foundation-model/*",
           "arn:aws:bedrock:${local.region}:${local.account_id}:inference-profile/*",
           "arn:aws:bedrock:us-east-1::foundation-model/*"
+        ]
+      },
+      {
+        Sid    = "LambdaInvokeForRouting"
+        Effect = "Allow"
+        Action = "lambda:InvokeFunction"
+        Resource = [
+          aws_lambda_function.analyze.arn,
+          aws_lambda_function.generate.arn,
+          aws_lambda_function.generate_diagram.arn,
+          aws_lambda_function.get_deployed_resources.arn,
+          aws_lambda_function.terraform_ops.arn,
+          aws_lambda_function.get_status.arn,
+          aws_lambda_function.modify_code.arn,
+          aws_lambda_function.run_tests.arn
         ]
       }
     ]
@@ -380,6 +397,26 @@ resource "aws_lambda_permission" "bedrock_run_tests" {
   statement_id  = "AllowBedrockAgentInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.run_tests.function_name
+  principal     = "bedrock.amazonaws.com"
+  source_arn    = aws_bedrockagent_agent.terraform_docs[0].agent_arn
+}
+
+resource "aws_lambda_permission" "bedrock_generate_diagram" {
+  count = var.enable_agent ? 1 : 0
+
+  statement_id  = "AllowBedrockAgentInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.generate_diagram.function_name
+  principal     = "bedrock.amazonaws.com"
+  source_arn    = aws_bedrockagent_agent.terraform_docs[0].agent_arn
+}
+
+resource "aws_lambda_permission" "bedrock_get_deployed_resources" {
+  count = var.enable_agent ? 1 : 0
+
+  statement_id  = "AllowBedrockAgentInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.get_deployed_resources.function_name
   principal     = "bedrock.amazonaws.com"
   source_arn    = aws_bedrockagent_agent.terraform_docs[0].agent_arn
 }

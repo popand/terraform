@@ -212,8 +212,78 @@ resource "aws_lambda_function" "run_tests" {
 }
 
 # -----------------------------------------------------------------------------
+# Lambda 8: Generate Architecture Diagram
+# -----------------------------------------------------------------------------
+
+data "archive_file" "generate_diagram" {
+  type        = "zip"
+  source_file = "${path.module}/lambda-code/generate_diagram.py"
+  output_path = "${path.module}/lambda-code/generate_diagram.zip"
+}
+
+resource "aws_lambda_function" "generate_diagram" {
+  filename         = data.archive_file.generate_diagram.output_path
+  function_name    = local.lambda_functions.generate_diagram
+  role             = aws_iam_role.lambda.arn
+  handler          = "generate_diagram.lambda_handler"
+  runtime          = "python3.11"
+  timeout          = 30   # Keep under API Gateway limit
+  memory_size      = 512  # Increased for diagram generation
+  source_code_hash = data.archive_file.generate_diagram.output_base64sha256
+
+  environment {
+    variables = {
+      TERRAFORM_BUCKET = aws_s3_bucket.terraform_files.id
+    }
+  }
+
+  tags = var.tags
+}
+
+# -----------------------------------------------------------------------------
+# Lambda 9: Get Deployed Resources
+# -----------------------------------------------------------------------------
+
+data "archive_file" "get_deployed_resources" {
+  type        = "zip"
+  source_file = "${path.module}/lambda-code/get_deployed_resources.py"
+  output_path = "${path.module}/lambda-code/get_deployed_resources.zip"
+}
+
+resource "aws_lambda_function" "get_deployed_resources" {
+  filename         = data.archive_file.get_deployed_resources.output_path
+  function_name    = local.lambda_functions.get_deployed_resources
+  role             = aws_iam_role.lambda.arn
+  handler          = "get_deployed_resources.lambda_handler"
+  runtime          = "python3.11"
+  timeout          = 30
+  memory_size      = 256
+  source_code_hash = data.archive_file.get_deployed_resources.output_base64sha256
+
+  environment {
+    variables = {
+      STATE_BUCKET = aws_s3_bucket.output_docs.id
+    }
+  }
+
+  tags = var.tags
+}
+
+# -----------------------------------------------------------------------------
 # CloudWatch Log Groups (with retention)
 # -----------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "get_deployed_resources" {
+  name              = "/aws/lambda/${local.lambda_functions.get_deployed_resources}"
+  retention_in_days = 14
+  tags              = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "generate_diagram" {
+  name              = "/aws/lambda/${local.lambda_functions.generate_diagram}"
+  retention_in_days = 14
+  tags              = var.tags
+}
 
 resource "aws_cloudwatch_log_group" "read_files" {
   name              = "/aws/lambda/${local.lambda_functions.read_files}"
