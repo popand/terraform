@@ -1,6 +1,6 @@
 """
 Lambda: Get Deployed Resources
-Retrieves details about currently deployed infrastructure from Terraform state and live AWS.
+Retrieves details about currently deployed infrastructure directly from AWS.
 Returns resource information suitable for display in chat.
 """
 
@@ -8,23 +8,14 @@ import boto3
 import json
 import os
 
-s3_client = boto3.client('s3')
 ec2_client = boto3.client('ec2')
 
 
 def lambda_handler(event, context):
     """
-    Gets deployed infrastructure details from Terraform state and live AWS.
+    Gets deployed infrastructure details directly from AWS.
     Returns formatted resource information.
     """
-
-    state_bucket = os.environ.get('STATE_BUCKET')
-
-    if not state_bucket:
-        return format_response(event, {
-            'error': 'Missing environment variable',
-            'message': 'STATE_BUCKET must be configured'
-        }, 500)
 
     # Get resource type filter from parameters
     resource_filter = None
@@ -43,37 +34,58 @@ def lambda_handler(event, context):
         resource_filter = event.get('resource_type')
 
     try:
-        # Get resources from Terraform state
-        state_resources = get_state_resources(state_bucket)
+        # Query AWS directly for resources
+        resources = []
 
-        if not state_resources:
+        # Get VPCs
+        vpcs = get_vpcs()
+        resources.extend(vpcs)
+
+        # Get EC2 instances
+        instances = get_instances()
+        resources.extend(instances)
+
+        # Get subnets
+        subnets = get_subnets()
+        resources.extend(subnets)
+
+        # Get security groups
+        security_groups = get_security_groups()
+        resources.extend(security_groups)
+
+        # Get elastic IPs
+        eips = get_elastic_ips()
+        resources.extend(eips)
+
+        # Get internet gateways
+        igws = get_internet_gateways()
+        resources.extend(igws)
+
+        if not resources:
             return format_response(event, {
                 'status': 'not_deployed',
-                'message': 'No Terraform state found. Infrastructure may not be deployed yet.',
+                'message': 'No infrastructure resources found in AWS.',
                 'resources': []
             }, 200)
 
-        # Enrich with live AWS data
-        enriched_resources = enrich_with_live_data(state_resources)
-
         # Filter if requested
         if resource_filter:
-            enriched_resources = [r for r in enriched_resources
-                                  if resource_filter.lower() in r.get('type', '').lower()]
+            resources = [r for r in resources
+                         if resource_filter.lower() in r.get('type', '').lower()]
 
         # Group resources by type for better display
-        grouped = group_resources(enriched_resources)
+        grouped = group_resources(resources)
 
         # Create summary
-        summary = create_summary(enriched_resources)
+        summary = create_summary(resources)
 
         result = {
             'status': 'deployed',
             'summary': summary,
-            'resource_count': len(enriched_resources),
+            'resource_count': len(resources),
             'resources_by_type': grouped,
-            'resources': enriched_resources,
-            'message': f'Found {len(enriched_resources)} deployed resources.'
+            'resources': resources,
+            'message': f'Found {len(resources)} deployed resources.'
         }
 
         return format_response(event, result, 200)
@@ -85,154 +97,213 @@ def lambda_handler(event, context):
         }, 500)
 
 
-def get_state_resources(bucket):
-    """Read resources from Terraform state file."""
+def get_vpcs():
+    """Get VPCs with FortiGate or Demo tags."""
+    resources = []
     try:
-        response = s3_client.get_object(
-            Bucket=bucket,
-            Key='terraform/terraform.tfstate'
+        response = ec2_client.describe_vpcs(
+            Filters=[
+                {'Name': 'tag:Project', 'Values': ['FortiGate-VPN-Demo', 'fortigate-demo', '*fortigate*', '*demo*']}
+            ]
         )
-        state = json.loads(response['Body'].read().decode('utf-8'))
 
-        resources = []
-        for resource in state.get('resources', []):
-            resource_type = resource.get('type', '')
-            resource_name = resource.get('name', '')
-            module = resource.get('module', 'root')
+        # If no project tag, get all non-default VPCs
+        if not response.get('Vpcs'):
+            response = ec2_client.describe_vpcs(
+                Filters=[{'Name': 'isDefault', 'Values': ['false']}]
+            )
 
-            for instance in resource.get('instances', []):
-                attrs = instance.get('attributes', {})
-
-                resource_info = {
-                    'type': resource_type,
-                    'name': resource_name,
-                    'module': module,
-                    'id': attrs.get('id', ''),
-                    'arn': attrs.get('arn', ''),
-                    'attributes': {}
+        for vpc in response.get('Vpcs', []):
+            name = get_tag_value(vpc.get('Tags', []), 'Name') or vpc['VpcId']
+            resources.append({
+                'type': 'vpc',
+                'id': vpc['VpcId'],
+                'name': name,
+                'attributes': {
+                    'cidr_block': vpc.get('CidrBlock'),
+                    'state': vpc.get('State'),
+                    'is_default': vpc.get('IsDefault', False)
                 }
-
-                # Extract key attributes based on resource type
-                if resource_type == 'aws_instance':
-                    resource_info['attributes'] = {
-                        'instance_id': attrs.get('id'),
-                        'instance_type': attrs.get('instance_type'),
-                        'public_ip': attrs.get('public_ip'),
-                        'private_ip': attrs.get('private_ip'),
-                        'availability_zone': attrs.get('availability_zone'),
-                        'state': attrs.get('instance_state'),
-                        'ami': attrs.get('ami'),
-                        'tags': attrs.get('tags', {})
-                    }
-                elif resource_type == 'aws_vpc':
-                    resource_info['attributes'] = {
-                        'vpc_id': attrs.get('id'),
-                        'cidr_block': attrs.get('cidr_block'),
-                        'state': attrs.get('state'),
-                        'tags': attrs.get('tags', {})
-                    }
-                elif resource_type == 'aws_subnet':
-                    resource_info['attributes'] = {
-                        'subnet_id': attrs.get('id'),
-                        'vpc_id': attrs.get('vpc_id'),
-                        'cidr_block': attrs.get('cidr_block'),
-                        'availability_zone': attrs.get('availability_zone'),
-                        'tags': attrs.get('tags', {})
-                    }
-                elif resource_type == 'aws_security_group':
-                    resource_info['attributes'] = {
-                        'sg_id': attrs.get('id'),
-                        'vpc_id': attrs.get('vpc_id'),
-                        'name': attrs.get('name'),
-                        'description': attrs.get('description'),
-                        'ingress_rules': len(attrs.get('ingress', [])),
-                        'egress_rules': len(attrs.get('egress', []))
-                    }
-                elif resource_type == 'aws_internet_gateway':
-                    resource_info['attributes'] = {
-                        'igw_id': attrs.get('id'),
-                        'vpc_id': attrs.get('vpc_id'),
-                        'tags': attrs.get('tags', {})
-                    }
-                elif resource_type == 'aws_eip':
-                    resource_info['attributes'] = {
-                        'allocation_id': attrs.get('id'),
-                        'public_ip': attrs.get('public_ip'),
-                        'private_ip': attrs.get('private_ip'),
-                        'instance_id': attrs.get('instance')
-                    }
-                elif resource_type == 'aws_route_table':
-                    resource_info['attributes'] = {
-                        'route_table_id': attrs.get('id'),
-                        'vpc_id': attrs.get('vpc_id'),
-                        'routes': len(attrs.get('route', []))
-                    }
-                elif resource_type == 'aws_network_interface':
-                    resource_info['attributes'] = {
-                        'eni_id': attrs.get('id'),
-                        'subnet_id': attrs.get('subnet_id'),
-                        'private_ip': attrs.get('private_ip'),
-                        'private_ips': attrs.get('private_ips', [])
-                    }
-                else:
-                    # Generic extraction for other types
-                    resource_info['attributes'] = {
-                        k: v for k, v in attrs.items()
-                        if k in ['id', 'arn', 'name', 'tags', 'state', 'status']
-                    }
-
-                resources.append(resource_info)
-
-        return resources
-
-    except s3_client.exceptions.NoSuchKey:
-        return None
+            })
     except Exception as e:
-        raise Exception(f"Failed to read state: {str(e)}")
+        pass
+    return resources
 
 
-def enrich_with_live_data(resources):
-    """Enrich state data with live AWS information."""
-    enriched = []
+def get_instances():
+    """Get EC2 instances."""
+    resources = []
+    try:
+        response = ec2_client.describe_instances(
+            Filters=[
+                {'Name': 'instance-state-name', 'Values': ['running', 'stopped', 'pending']}
+            ]
+        )
 
-    # Collect EC2 instance IDs for batch lookup
-    instance_ids = [
-        r['attributes'].get('instance_id')
-        for r in resources
-        if r['type'] == 'aws_instance' and r['attributes'].get('instance_id')
-    ]
+        for reservation in response.get('Reservations', []):
+            for instance in reservation.get('Instances', []):
+                name = get_tag_value(instance.get('Tags', []), 'Name') or instance['InstanceId']
+                instance_type = instance.get('InstanceType', '')
 
-    # Get live instance data
-    live_instances = {}
-    if instance_ids:
-        try:
-            response = ec2_client.describe_instances(InstanceIds=instance_ids)
-            for reservation in response.get('Reservations', []):
-                for instance in reservation.get('Instances', []):
-                    live_instances[instance['InstanceId']] = {
+                # Determine if it's a FortiGate or Ubuntu
+                role = 'unknown'
+                if 'fortigate' in name.lower() or 'fortios' in instance_type.lower():
+                    role = 'FortiGate Firewall'
+                elif 'ubuntu' in name.lower():
+                    role = 'Ubuntu Server'
+
+                resources.append({
+                    'type': 'instance',
+                    'id': instance['InstanceId'],
+                    'name': name,
+                    'role': role,
+                    'attributes': {
+                        'instance_type': instance_type,
                         'state': instance['State']['Name'],
-                        'public_ip': instance.get('PublicIpAddress'),
+                        'public_ip': instance.get('PublicIpAddress', 'None'),
                         'private_ip': instance.get('PrivateIpAddress'),
+                        'availability_zone': instance['Placement']['AvailabilityZone'],
+                        'vpc_id': instance.get('VpcId'),
+                        'subnet_id': instance.get('SubnetId'),
                         'launch_time': instance.get('LaunchTime', '').isoformat() if instance.get('LaunchTime') else None
                     }
-        except Exception:
-            pass  # Continue with state data if live lookup fails
+                })
+    except Exception as e:
+        pass
+    return resources
 
-    for resource in resources:
-        enriched_resource = resource.copy()
 
-        # Update EC2 instances with live data
-        if resource['type'] == 'aws_instance':
-            instance_id = resource['attributes'].get('instance_id')
-            if instance_id in live_instances:
-                enriched_resource['live_status'] = live_instances[instance_id]['state']
-                enriched_resource['attributes']['current_public_ip'] = live_instances[instance_id]['public_ip']
-                enriched_resource['attributes']['current_private_ip'] = live_instances[instance_id]['private_ip']
-                enriched_resource['attributes']['launch_time'] = live_instances[instance_id]['launch_time']
+def get_subnets():
+    """Get subnets from non-default VPCs."""
+    resources = []
+    try:
+        # First get non-default VPCs
+        vpc_response = ec2_client.describe_vpcs(
+            Filters=[{'Name': 'isDefault', 'Values': ['false']}]
+        )
+        vpc_ids = [vpc['VpcId'] for vpc in vpc_response.get('Vpcs', [])]
 
-        enriched.append(enriched_resource)
+        if vpc_ids:
+            response = ec2_client.describe_subnets(
+                Filters=[{'Name': 'vpc-id', 'Values': vpc_ids}]
+            )
 
-    return enriched
+            for subnet in response.get('Subnets', []):
+                name = get_tag_value(subnet.get('Tags', []), 'Name') or subnet['SubnetId']
+                resources.append({
+                    'type': 'subnet',
+                    'id': subnet['SubnetId'],
+                    'name': name,
+                    'attributes': {
+                        'cidr_block': subnet.get('CidrBlock'),
+                        'availability_zone': subnet.get('AvailabilityZone'),
+                        'vpc_id': subnet.get('VpcId'),
+                        'available_ips': subnet.get('AvailableIpAddressCount')
+                    }
+                })
+    except Exception as e:
+        pass
+    return resources
+
+
+def get_security_groups():
+    """Get security groups from non-default VPCs."""
+    resources = []
+    try:
+        # First get non-default VPCs
+        vpc_response = ec2_client.describe_vpcs(
+            Filters=[{'Name': 'isDefault', 'Values': ['false']}]
+        )
+        vpc_ids = [vpc['VpcId'] for vpc in vpc_response.get('Vpcs', [])]
+
+        if vpc_ids:
+            response = ec2_client.describe_security_groups(
+                Filters=[{'Name': 'vpc-id', 'Values': vpc_ids}]
+            )
+
+            for sg in response.get('SecurityGroups', []):
+                if sg.get('GroupName') == 'default':
+                    continue
+                resources.append({
+                    'type': 'security_group',
+                    'id': sg['GroupId'],
+                    'name': sg.get('GroupName'),
+                    'attributes': {
+                        'description': sg.get('Description'),
+                        'vpc_id': sg.get('VpcId'),
+                        'ingress_rules': len(sg.get('IpPermissions', [])),
+                        'egress_rules': len(sg.get('IpPermissionsEgress', []))
+                    }
+                })
+    except Exception as e:
+        pass
+    return resources
+
+
+def get_elastic_ips():
+    """Get Elastic IPs."""
+    resources = []
+    try:
+        response = ec2_client.describe_addresses()
+
+        for eip in response.get('Addresses', []):
+            name = get_tag_value(eip.get('Tags', []), 'Name') or eip.get('PublicIp')
+            resources.append({
+                'type': 'elastic_ip',
+                'id': eip.get('AllocationId'),
+                'name': name,
+                'attributes': {
+                    'public_ip': eip.get('PublicIp'),
+                    'private_ip': eip.get('PrivateIpAddress'),
+                    'instance_id': eip.get('InstanceId', 'unattached'),
+                    'network_interface': eip.get('NetworkInterfaceId')
+                }
+            })
+    except Exception as e:
+        pass
+    return resources
+
+
+def get_internet_gateways():
+    """Get Internet Gateways."""
+    resources = []
+    try:
+        response = ec2_client.describe_internet_gateways(
+            Filters=[{'Name': 'attachment.state', 'Values': ['available']}]
+        )
+
+        for igw in response.get('InternetGateways', []):
+            name = get_tag_value(igw.get('Tags', []), 'Name') or igw['InternetGatewayId']
+            vpc_id = None
+            for attachment in igw.get('Attachments', []):
+                vpc_id = attachment.get('VpcId')
+                break
+
+            # Skip default VPC gateways
+            if vpc_id:
+                vpc_response = ec2_client.describe_vpcs(VpcIds=[vpc_id])
+                if vpc_response.get('Vpcs') and vpc_response['Vpcs'][0].get('IsDefault'):
+                    continue
+
+            resources.append({
+                'type': 'internet_gateway',
+                'id': igw['InternetGatewayId'],
+                'name': name,
+                'attributes': {
+                    'vpc_id': vpc_id
+                }
+            })
+    except Exception as e:
+        pass
+    return resources
+
+
+def get_tag_value(tags, key):
+    """Extract tag value by key."""
+    for tag in tags:
+        if tag.get('Key') == key:
+            return tag.get('Value')
+    return None
 
 
 def group_resources(resources):
@@ -244,7 +315,6 @@ def group_resources(resources):
             grouped[resource_type] = []
         grouped[resource_type].append({
             'name': resource['name'],
-            'module': resource['module'],
             'id': resource['id'],
             'key_info': get_key_info(resource)
         })
@@ -256,17 +326,22 @@ def get_key_info(resource):
     attrs = resource.get('attributes', {})
     resource_type = resource['type']
 
-    if resource_type == 'aws_instance':
-        status = resource.get('live_status', attrs.get('state', 'unknown'))
-        return f"{attrs.get('instance_type', '')} | {attrs.get('public_ip') or attrs.get('private_ip', 'no IP')} | {status}"
-    elif resource_type == 'aws_vpc':
+    if resource_type == 'instance':
+        role = resource.get('role', '')
+        public_ip = attrs.get('public_ip', 'None')
+        private_ip = attrs.get('private_ip', '')
+        state = attrs.get('state', 'unknown')
+        return f"{role} | Public: {public_ip} | Private: {private_ip} | {state}"
+    elif resource_type == 'vpc':
         return f"{attrs.get('cidr_block', '')} | {attrs.get('state', '')}"
-    elif resource_type == 'aws_subnet':
+    elif resource_type == 'subnet':
         return f"{attrs.get('cidr_block', '')} | {attrs.get('availability_zone', '')}"
-    elif resource_type == 'aws_security_group':
-        return f"{attrs.get('name', '')} | {attrs.get('ingress_rules', 0)} ingress, {attrs.get('egress_rules', 0)} egress"
-    elif resource_type == 'aws_eip':
+    elif resource_type == 'security_group':
+        return f"{attrs.get('ingress_rules', 0)} ingress, {attrs.get('egress_rules', 0)} egress"
+    elif resource_type == 'elastic_ip':
         return f"{attrs.get('public_ip', '')} -> {attrs.get('instance_id', 'unattached')}"
+    elif resource_type == 'internet_gateway':
+        return f"Attached to {attrs.get('vpc_id', 'none')}"
     else:
         return resource['id']
 
@@ -275,42 +350,47 @@ def create_summary(resources):
     """Create a human-readable summary of deployed resources."""
     type_counts = {}
     for r in resources:
-        t = r['type'].replace('aws_', '')
+        t = r['type']
         type_counts[t] = type_counts.get(t, 0) + 1
 
     # Find key resources
-    instances = [r for r in resources if r['type'] == 'aws_instance']
-    vpcs = [r for r in resources if r['type'] == 'aws_vpc']
-    eips = [r for r in resources if r['type'] == 'aws_eip']
+    instances = [r for r in resources if r['type'] == 'instance']
+    vpcs = [r for r in resources if r['type'] == 'vpc']
+    eips = [r for r in resources if r['type'] == 'elastic_ip']
 
     summary_parts = []
 
     if vpcs:
-        vpc_cidrs = [v['attributes'].get('cidr_block', '') for v in vpcs]
-        summary_parts.append(f"**VPCs**: {len(vpcs)} ({', '.join(vpc_cidrs)})")
+        vpc_info = [f"{v['name']} ({v['attributes'].get('cidr_block', '')})" for v in vpcs]
+        summary_parts.append(f"**VPCs ({len(vpcs)})**: {', '.join(vpc_info)}")
 
     if instances:
-        running = sum(1 for i in instances if i.get('live_status') == 'running')
-        summary_parts.append(f"**Instances**: {len(instances)} ({running} running)")
+        running = sum(1 for i in instances if i['attributes'].get('state') == 'running')
+        summary_parts.append(f"**Instances ({len(instances)})**: {running} running")
 
-        # List instances with IPs
+        # List instances with details
         instance_details = []
-        for inst in instances:
-            name = inst['attributes'].get('tags', {}).get('Name', inst['name'])
-            ip = inst['attributes'].get('public_ip') or inst['attributes'].get('private_ip', 'no IP')
-            instance_details.append(f"  - {name}: {ip}")
+        for inst in sorted(instances, key=lambda x: x['name']):
+            name = inst['name']
+            role = inst.get('role', '')
+            public_ip = inst['attributes'].get('public_ip', 'None')
+            private_ip = inst['attributes'].get('private_ip', '')
+            state = inst['attributes'].get('state', 'unknown')
+            instance_details.append(f"  - **{name}** ({role}): Public IP: {public_ip}, Private IP: {private_ip}, State: {state}")
         if instance_details:
             summary_parts.append("**Instance Details**:\n" + "\n".join(instance_details))
 
     if eips:
-        eip_list = [e['attributes'].get('public_ip', '') for e in eips]
-        summary_parts.append(f"**Elastic IPs**: {', '.join(eip_list)}")
+        eip_details = []
+        for e in eips:
+            eip_details.append(f"  - {e['attributes'].get('public_ip')} -> {e['attributes'].get('instance_id', 'unattached')}")
+        summary_parts.append(f"**Elastic IPs ({len(eips)})**:\n" + "\n".join(eip_details))
 
     # Resource type breakdown
-    type_summary = ", ".join([f"{count} {t}" for t, count in sorted(type_counts.items())])
-    summary_parts.append(f"**All Resources**: {type_summary}")
+    type_summary = ", ".join([f"{count} {t}(s)" for t, count in sorted(type_counts.items())])
+    summary_parts.append(f"**Total Resources**: {type_summary}")
 
-    return "\n".join(summary_parts)
+    return "\n\n".join(summary_parts)
 
 
 def format_response(event, body, status_code):
