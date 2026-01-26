@@ -117,7 +117,7 @@ terraform/
 │   │   ├── variables.tf
 │   │   ├── outputs.tf
 │   │   ├── iam.tf              # IAM roles (Bedrock, Lambda, CodeBuild)
-│   │   ├── lambda.tf           # 7 Lambda functions
+│   │   ├── lambda.tf           # 9 Lambda functions
 │   │   ├── codebuild.tf        # CodeBuild for Terraform execution
 │   │   ├── openapi-schema.yaml # Action group API schema
 │   │   └── lambda-code/        # Python source files
@@ -646,34 +646,36 @@ The project includes a complete AI agent built with Amazon Bedrock that can:
 
 1. **Analyze Terraform code** and generate documentation
 2. **Answer questions** about infrastructure in natural language
-3. **Execute Terraform operations** (plan, apply, destroy)
-4. **Check deployment status** and report infrastructure state
-5. **Modify Terraform code** based on suggestions
-6. **Run infrastructure tests** after deployment
+3. **Show deployed resources** with real-time AWS data (instance IPs, VPCs, states)
+4. **Generate architecture diagrams** as Mermaid code for visualization
+5. **Execute Terraform operations** (plan, apply, destroy)
+6. **Check deployment status** and report infrastructure state
+7. **Modify Terraform code** based on suggestions
+8. **Run infrastructure tests** after deployment
 
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Amazon Bedrock Agent                          │
-│  ┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐   │
-│  │Read   ││Analyze││Generate││TF Ops ││Status ││Modify ││Run    │   │
-│  │Files  ││       ││Docs   ││       ││       ││Code   ││Tests  │   │
-│  └───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘   │
-└──────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┘
-       │        │        │        │        │        │        │
-       ▼        ▼        ▼        ▼        ▼        ▼        ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                        7 Lambda Functions                            │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-       ┌───────────────────────┼───────────────────────┐
-       ▼                       ▼                       ▼
-┌─────────────┐        ┌─────────────┐        ┌─────────────┐
-│  S3 Bucket  │        │  CodeBuild  │        │   AWS EC2   │
-│  Terraform  │        │  Terraform  │        │ (Phase 1    │
-│    Files    │        │  Executor   │        │  Infra)     │
-└─────────────┘        └─────────────┘        └─────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                              Amazon Bedrock Agent                                   │
+│  ┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐│
+│  │Read   ││Analyze││Generate││Diagram││Deployed││TF Ops ││Status ││Modify ││Tests  ││
+│  │Files  ││       ││Docs   ││       ││Resources│       ││       ││Code   ││       ││
+│  └───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘└───┬───┘│
+└──────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼─────┘
+       │        │        │        │        │        │        │        │        │
+       ▼        ▼        ▼        ▼        ▼        ▼        ▼        ▼        ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                               9 Lambda Functions                                    │
+└─────────────────────────────────────┬─────────────────────────────────────────────┘
+                                      │
+          ┌───────────────────────────┼───────────────────────────┐
+          ▼                           ▼                           ▼
+   ┌─────────────┐            ┌─────────────┐            ┌─────────────┐
+   │  S3 Bucket  │            │  CodeBuild  │            │   AWS EC2   │
+   │  Terraform  │            │  Terraform  │            │   (Live     │
+   │    Files    │            │  Executor   │            │   Queries)  │
+   └─────────────┘            └─────────────┘            └─────────────┘
 ```
 
 ### Deploy Phase 2
@@ -722,8 +724,11 @@ aws bedrock-agent-runtime invoke-agent \
 |--------|--------------|
 | "Read and analyze all Terraform files" | Lists all resources, modules, variables |
 | "What does the FortiGate module create?" | Explains FortiGate resources |
-| "Run terraform plan" | Triggers CodeBuild to run plan |
+| "Show deployed resources" | Queries live AWS for instance IPs, VPCs, states |
+| "What is deployed?" | Returns real-time infrastructure details |
+| "Show architecture diagram" | Generates Mermaid diagram from Terraform |
 | "Generate documentation" | Creates markdown documentation |
+| "Run terraform plan" | Triggers CodeBuild to run plan |
 | "Run connectivity tests" | Tests deployed infrastructure |
 | "Add a description tag to the VPC" | Modifies Terraform code (dry run first) |
 
@@ -738,7 +743,9 @@ aws bedrock-agent-runtime invoke-agent \
 |------------|-----------------|-------------|
 | Read Files | `terraform-docs-read-files` | Read .tf files from S3 |
 | Analyze | `terraform-docs-analyze` | Parse and extract resources |
-| Generate Docs | `terraform-docs-generate` | Save markdown to S3 |
+| Generate Docs | `terraform-docs-generate` | Generate markdown documentation |
+| Generate Diagram | `terraform-docs-diagram` | Create Mermaid architecture diagrams |
+| Get Deployed Resources | `terraform-docs-deployed` | Query live AWS for deployed infrastructure |
 | Terraform Ops | `terraform-docs-operations` | Plan/apply/destroy via CodeBuild |
 | Get Status | `terraform-docs-status` | Check build/infrastructure state |
 | Modify Code | `terraform-docs-modify-code` | Update Terraform files |
