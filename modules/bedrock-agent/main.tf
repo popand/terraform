@@ -138,6 +138,12 @@ resource "aws_s3_object" "openapi_schema" {
   tags = var.tags
 }
 
+# Wait for S3 object to propagate before Bedrock reads it
+resource "time_sleep" "wait_for_schema" {
+  depends_on      = [aws_s3_object.openapi_schema]
+  create_duration = "5s"
+}
+
 # -----------------------------------------------------------------------------
 # Bedrock Agent
 # -----------------------------------------------------------------------------
@@ -253,7 +259,7 @@ resource "aws_bedrockagent_agent_action_group" "terraform_actions" {
     }
   }
 
-  depends_on = [aws_s3_object.openapi_schema]
+  depends_on = [time_sleep.wait_for_schema]
 }
 
 # Prepare the agent after action group is created
