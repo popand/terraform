@@ -132,16 +132,10 @@ resource "aws_s3_object" "openapi_schema" {
   bucket       = aws_s3_bucket.terraform_files.id
   key          = "schemas/openapi-schema.yaml"
   source       = "${path.module}/openapi-schema.yaml"
-  content_type = "application/x-yaml"
+  content_type = "text/yaml"
   etag         = filemd5("${path.module}/openapi-schema.yaml")
 
   tags = var.tags
-}
-
-# Wait for S3 object to propagate before Bedrock reads it
-resource "time_sleep" "wait_for_schema" {
-  depends_on      = [aws_s3_object.openapi_schema]
-  create_duration = "5s"
 }
 
 # -----------------------------------------------------------------------------
@@ -247,19 +241,15 @@ resource "aws_bedrockagent_agent_action_group" "terraform_actions" {
   action_group_name          = "TerraformOperations"
   description                = "Actions for reading, analyzing, and managing Terraform infrastructure"
   skip_resource_in_use_check = true
+  prepare_agent              = true
 
   action_group_executor {
     lambda = aws_lambda_function.read_files.arn
   }
 
   api_schema {
-    s3 {
-      s3_bucket_name = aws_s3_bucket.terraform_files.id
-      s3_object_key  = aws_s3_object.openapi_schema.key
-    }
+    payload = file("${path.module}/openapi-schema.yaml")
   }
-
-  depends_on = [time_sleep.wait_for_schema]
 }
 
 # Prepare the agent after action group is created

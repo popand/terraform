@@ -113,7 +113,7 @@ deploy: init validate plan apply
 deploy-agent: init validate plan-agent apply
 
 # Deploy full stack (infrastructure + agent + chat UI)
-deploy-full: init validate build-ui plan-full apply
+deploy-full: init validate apply-full
 
 # Show current state
 state:
