@@ -116,6 +116,8 @@
             font-size: 16px;
             overflow: auto;
             color: #c9d1d9;
+            white-space: pre;
+            line-height: 1.4;
         }
 
         .code-block .comment { color: #8b949e; }
@@ -324,7 +326,7 @@
     <div class="slide title-slide active">
         <h1>FortiGate VPN Infrastructure<br>with AI-Powered Automation</h1>
         <p class="subtitle">Terraform IaC + Amazon Bedrock Agent</p>
-        <p class="author">Andrei Pop | January 2025</p>
+        <p class="author">Andrei Pop | January 2026</p>
         <div class="slide-number">1 / 12</div>
     </div>
 
@@ -341,7 +343,7 @@
                 <div class="label">Terraform Modules</div>
             </div>
             <div class="stat-box">
-                <div class="number">7</div>
+                <div class="number">9</div>
                 <div class="label">Lambda Functions</div>
             </div>
             <div class="stat-box">
@@ -367,18 +369,18 @@
         <div class="architecture-diagram">
                          VPC 1 (10.0.0.0/16)                              VPC 2 (10.100.0.0/16)
             +----------------------------------+              +----------------------------------+
-            |     Public: 10.0.0.0/24          |              |     Public: 10.100.0.0/24       |
+            |     Public: 10.0.0.0/24          |              |     Public: 10.100.0.0/24        |
             |  +----------------------------+  |              |  +----------------------------+  |
             |  |    FortiGate-1             |  |   IPSec VPN  |  |    FortiGate-2             |  |
-            |  |    3.19.233.255            |&lt;================&gt;|    3.135.21.14             |  |
-            |  +-------------+--------------+  |  AES256-SHA256|  +-------------+--------------+  |
+            |  |    3.19.233.255            |&lt;================&gt;  |    3.135.21.14             |  |
+            |  +-------------+--------------+  |  AES256-SHA256|  +-------------+-------------+  |
             +-----------------|----------------+              +-----------------|----------------+
-            |     Private: 10.0.1.0/24         |              |     Private: 10.100.1.0/24      |
-            |  +----------------------------+  |              |  +----------------------------+  |
-            |  |    Ubuntu VM-1             |  |              |  |    Ubuntu VM-2             |  |
-            |  |    10.0.1.10               |&lt;- - - - - - - - - -&gt;    10.100.1.10            |  |
-            |  +----------------------------+  |  Encrypted   |  +----------------------------+  |
-            +----------------------------------+   Traffic     +----------------------------------+
+            |     Private: 10.0.1.0/24         |              |     Private: 10.100.1.0/24       |
+            |  +----------------------------+  |              |  +---------------------------+   |
+            |  |    Ubuntu VM-1             |  |              |  |    Ubuntu VM-2            |   |
+            |  |    10.0.1.10               |&lt;- - - - - - - - - -&gt;    10.100.1.10            |   |
+            |  +----------------------------+  |  Encrypted   |  +---------------------------+   |
+            +----------------------------------+   Traffic     +---------------------------------+
         </div>
         <div class="slide-number">3 / 12</div>
     </div>
@@ -386,42 +388,50 @@
     <!-- Slide 4: Terraform Module Structure -->
     <div class="slide">
         <h2>Terraform Module Architecture</h2>
-        <div class="two-column">
+        <div class="two-column" style="gap: 40px;">
             <div>
-                <div class="code-block">
+                <div class="code-block" style="font-size: 14px; padding: 15px; line-height: 1.8;">
 <span class="comment"># Project Structure</span>
+
 terraform/
-├── main.tf          <span class="comment"># Root orchestration</span>
-├── variables.tf     <span class="comment"># Input variables</span>
-├── outputs.tf       <span class="comment"># Output values</span>
+│
+├── main.tf            <span class="comment"># Root orchestration</span>
+├── variables.tf       <span class="comment"># Input variables</span>
+├── outputs.tf         <span class="comment"># Output values</span>
 │
 └── modules/
-    ├── <span class="function">vpc/</span>          <span class="comment"># Network foundation</span>
-    ├── <span class="function">fortigate/</span>    <span class="comment"># Security appliance</span>
-    ├── <span class="function">ubuntu/</span>       <span class="comment"># Workload VMs</span>
-    └── <span class="function">bedrock-agent/</span><span class="comment"># AI automation</span>
+    ├── <span class="function">vpc/</span>           <span class="comment"># Network foundation</span>
+    ├── <span class="function">fortigate/</span>     <span class="comment"># Security appliance</span>
+    ├── <span class="function">ubuntu/</span>        <span class="comment"># Workload VMs</span>
+    ├── <span class="function">bedrock-agent/</span> <span class="comment"># AI automation</span>
+    └── <span class="function">chat-ui/</span>       <span class="comment"># Web interface</span>
                 </div>
             </div>
-            <div>
-                <div class="module-card">
-                    <h4>vpc</h4>
-                    <p>VPC, subnets, IGW, route tables</p>
-                    <span class="tag">x2 instances</span>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="module-card" style="padding: 15px; margin: 0;">
+                    <h4 style="font-size: 18px; margin-bottom: 8px;">vpc</h4>
+                    <p style="font-size: 14px;">VPC, subnets, IGW, routes</p>
+                    <span class="tag" style="font-size: 12px;">x2</span>
                 </div>
-                <div class="module-card">
-                    <h4>fortigate</h4>
-                    <p>EC2, ENIs, security groups, VPN config</p>
-                    <span class="tag blue">x2 instances</span>
+                <div class="module-card" style="padding: 15px; margin: 0;">
+                    <h4 style="font-size: 18px; margin-bottom: 8px;">fortigate</h4>
+                    <p style="font-size: 14px;">EC2, ENIs, SGs, VPN</p>
+                    <span class="tag blue" style="font-size: 12px;">x2</span>
                 </div>
-                <div class="module-card">
-                    <h4>ubuntu</h4>
-                    <p>EC2 workloads in private subnets</p>
-                    <span class="tag purple">x2 instances</span>
+                <div class="module-card" style="padding: 15px; margin: 0;">
+                    <h4 style="font-size: 18px; margin-bottom: 8px;">ubuntu</h4>
+                    <p style="font-size: 14px;">EC2 in private subnets</p>
+                    <span class="tag purple" style="font-size: 12px;">x2</span>
                 </div>
-                <div class="module-card">
-                    <h4>bedrock-agent</h4>
-                    <p>AI agent, Lambda, CodeBuild</p>
-                    <span class="tag orange">Optional</span>
+                <div class="module-card" style="padding: 15px; margin: 0;">
+                    <h4 style="font-size: 18px; margin-bottom: 8px;">bedrock-agent</h4>
+                    <p style="font-size: 14px;">AI, 9 Lambdas, CodeBuild</p>
+                    <span class="tag orange" style="font-size: 12px;">Optional</span>
+                </div>
+                <div class="module-card" style="padding: 15px; margin: 0; grid-column: span 2;">
+                    <h4 style="font-size: 18px; margin-bottom: 8px;">chat-ui</h4>
+                    <p style="font-size: 14px;">React app, CloudFront, API Gateway</p>
+                    <span class="tag orange" style="font-size: 12px;">Optional</span>
                 </div>
             </div>
         </div>
@@ -528,73 +538,74 @@ config firewall policy
     <!-- Slide 7: Bedrock Agent Architecture -->
     <div class="slide">
         <h2>AI Agent Architecture</h2>
-        <div class="architecture-diagram" style="font-size: 13px;">
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                           Amazon Bedrock Agent                                       │
-│                        (Claude 3 Sonnet Foundation Model)                            │
-│                                                                                      │
-│   User: "Analyze the Terraform files and explain the infrastructure"                │
-│                                      │                                               │
-│   ┌──────────────────────────────────┼──────────────────────────────────────────┐   │
-│   │                           Action Groups                                      │   │
-│   │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │   │
-│   │  │  Read    │ │ Analyze  │ │ Generate │ │  TF Ops  │ │  Status  │          │   │
-│   │  │  Files   │ │          │ │   Docs   │ │          │ │          │          │   │
-│   │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘          │   │
-│   │  ┌────┴─────┐ ┌────┴─────┐                                                  │   │
-│   │  │  Modify  │ │   Run    │                                                  │   │
-│   │  │   Code   │ │  Tests   │                                                  │   │
-│   │  └────┬─────┘ └────┬─────┘                                                  │   │
-│   └───────┼────────────┼────────────────────────────────────────────────────────┘   │
-└───────────┼────────────┼────────────────────────────────────────────────────────────┘
-            │            │
-            ▼            ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              7 Lambda Functions                                      │
-│   read_files.py │ analyze.py │ generate.py │ terraform_ops.py │ get_status.py │ ...│
-└────────────────────────────────────┬────────────────────────────────────────────────┘
-                                     │
-         ┌───────────────────────────┼───────────────────────────┐
-         ▼                           ▼                           ▼
-   ┌───────────┐              ┌───────────┐              ┌───────────┐
-   │ S3 Bucket │              │ CodeBuild │              │  Phase 1  │
-   │ *.tf      │              │ Terraform │              │  Infra    │
-   └───────────┘              └───────────┘              └───────────┘
+        <div class="architecture-diagram" style="font-size: 12px;">
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│                              Amazon Bedrock Agent (Claude 3 Sonnet)                       │
+│                                                                                           │
+│   User: "Show deployed resources" / "Generate diagram" / "Run terraform plan"             │
+│                                           │                                               │
+│   ┌───────────────────────────────────────┼───────────────────────────────────────────┐   │
+│   │                              Action Groups (9 Functions)                          │   │
+│   │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌─────────┐ ┌────────┐ ┌────────┐    │   │
+│   │  │ Read   │ │Analyze │ │Generate│ │Diagram │ │Deployed │ │ TF Ops │ │ Status │    │   │
+│   │  │ Files  │ │        │ │  Docs  │ │        │ │Resources│ |        │ │        │    │   │
+│   │  └────────┘ └────────┘ └────────┘ └────────┘ └─────────┘ └────────┘ └────────┘    │   │
+│   │  ┌────────┐ ┌────────┐                                                            │   │
+│   │  │ Modify │ │  Run   │                                                            │   │
+│   │  │  Code  │ │ Tests  │                                                            │   │
+│   │  └────────┘ └────────┘                                                            │   │
+│   └───────────────────────────────────────┼───────────────────────────────────────────┘   │
+└───────────────────────────────────────────┼───────────────────────────────────────────────┘
+                                            │
+         ┌──────────────────────────────────┼──────────────────────────────────┐
+         ▼                                  ▼                                  ▼
+   ┌───────────┐                     ┌───────────┐                     ┌───────────┐
+   │ S3 Bucket │                     │ CodeBuild │                     │  AWS EC2  │
+   │ *.tf files│                     │ Terraform │                     │ Live Data │
+   └───────────┘                     └───────────┘                     └───────────┘
         </div>
         <div class="slide-number">7 / 12</div>
     </div>
 
     <!-- Slide 8: Lambda Functions -->
     <div class="slide">
-        <h2>Agent Capabilities (7 Lambda Functions)</h2>
-        <div class="lambda-grid">
-            <div class="lambda-card">
-                <div class="name">read_files.py</div>
-                <div class="desc">List and retrieve .tf files from S3 bucket</div>
+        <h2>Agent Capabilities (9 Lambda Functions)</h2>
+        <div class="lambda-grid" style="grid-template-columns: repeat(3, 1fr); gap: 15px;">
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">read_files.py</div>
+                <div class="desc" style="font-size: 14px;">Routes requests, retrieves .tf files from S3</div>
             </div>
-            <div class="lambda-card">
-                <div class="name">analyze.py</div>
-                <div class="desc">Parse Terraform HCL, extract resources & variables</div>
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">analyze.py</div>
+                <div class="desc" style="font-size: 14px;">Parse HCL, extract resources & variables</div>
             </div>
-            <div class="lambda-card">
-                <div class="name">generate.py</div>
-                <div class="desc">Create markdown documentation, save to S3</div>
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">generate.py</div>
+                <div class="desc" style="font-size: 14px;">Create markdown documentation</div>
             </div>
-            <div class="lambda-card">
-                <div class="name">terraform_ops.py</div>
-                <div class="desc">Trigger CodeBuild for plan/apply/destroy</div>
+            <div class="lambda-card" style="padding: 15px; border: 1px solid #3fb950;">
+                <div class="name" style="font-size: 16px; color: #3fb950;">generate_diagram.py</div>
+                <div class="desc" style="font-size: 14px;">Generate Mermaid architecture diagrams</div>
             </div>
-            <div class="lambda-card">
-                <div class="name">get_status.py</div>
-                <div class="desc">Check build status, view Terraform outputs</div>
+            <div class="lambda-card" style="padding: 15px; border: 1px solid #3fb950;">
+                <div class="name" style="font-size: 16px; color: #3fb950;">get_deployed_resources.py</div>
+                <div class="desc" style="font-size: 14px;">Query live AWS for IPs, states, VPCs</div>
             </div>
-            <div class="lambda-card">
-                <div class="name">modify_code.py</div>
-                <div class="desc">Update Terraform files with dry-run support</div>
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">terraform_ops.py</div>
+                <div class="desc" style="font-size: 14px;">Trigger CodeBuild for plan/apply/destroy</div>
             </div>
-            <div class="lambda-card">
-                <div class="name">run_tests.py</div>
-                <div class="desc">Validate deployed infrastructure connectivity</div>
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">get_status.py</div>
+                <div class="desc" style="font-size: 14px;">Check build status, view outputs</div>
+            </div>
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">modify_code.py</div>
+                <div class="desc" style="font-size: 14px;">Update Terraform files (dry-run)</div>
+            </div>
+            <div class="lambda-card" style="padding: 15px;">
+                <div class="name" style="font-size: 16px;">run_tests.py</div>
+                <div class="desc" style="font-size: 14px;">Validate infrastructure connectivity</div>
             </div>
         </div>
         <div class="slide-number">8 / 12</div>
@@ -603,20 +614,39 @@ config firewall policy
     <!-- Slide 9: Example Conversation -->
     <div class="slide">
         <h2>Agent in Action</h2>
-        <div class="highlight-box">
-            <p style="color: #00d4ff; font-weight: 600;">User: "Run connectivity tests on the infrastructure"</p>
-        </div>
-        <div class="highlight-box" style="border-left-color: #3fb950;">
-            <p style="color: #3fb950; font-weight: 600;">Agent Response:</p>
-            <p style="margin-top: 15px;">Running infrastructure validation tests...</p>
-            <p style="margin-top: 15px; font-family: monospace; font-size: 20px;">
-                <span class="check">&#10003;</span> FortiGate 1 HTTPS accessible (3.19.233.255)<br>
-                <span class="check">&#10003;</span> FortiGate 2 HTTPS accessible (3.135.21.14)<br>
-                <span class="check">&#10003;</span> VPN tunnel status: UP (selectors 1/1)<br>
-                <span class="check">&#10003;</span> Cross-VPC ping: 0% loss, 0.5ms latency<br>
-                <br>
-                <span style="color: #3fb950; font-weight: bold;">All 4 tests passed.</span>
-            </p>
+        <div class="two-column" style="gap: 30px;">
+            <div>
+                <div class="highlight-box" style="padding: 15px 20px;">
+                    <p style="color: #00d4ff; font-weight: 600; font-size: 18px;">User: "Show deployed resources"</p>
+                </div>
+                <div class="highlight-box" style="border-left-color: #3fb950; padding: 15px 20px;">
+                    <p style="color: #3fb950; font-weight: 600; font-size: 16px;">Agent Response:</p>
+                    <p style="margin-top: 10px; font-family: monospace; font-size: 14px;">
+                        <strong>VPCs (2):</strong> vpc1 (10.0.0.0/16), vpc2 (10.100.0.0/16)<br><br>
+                        <strong>Instances (4):</strong> 4 running<br>
+                        • FortiGate-1: 18.116.225.9 | 10.0.0.28<br>
+                        • FortiGate-2: 18.221.18.93 | 10.100.0.62<br>
+                        • Ubuntu-VM-1: 10.0.1.10<br>
+                        • Ubuntu-VM-2: 10.100.1.10
+                    </p>
+                </div>
+            </div>
+            <div>
+                <div class="highlight-box" style="padding: 15px 20px;">
+                    <p style="color: #00d4ff; font-weight: 600; font-size: 18px;">User: "Run connectivity tests"</p>
+                </div>
+                <div class="highlight-box" style="border-left-color: #3fb950; padding: 15px 20px;">
+                    <p style="color: #3fb950; font-weight: 600; font-size: 16px;">Agent Response:</p>
+                    <p style="margin-top: 10px; font-family: monospace; font-size: 14px;">
+                        <span class="check">&#10003;</span> FortiGate 1 HTTPS accessible<br>
+                        <span class="check">&#10003;</span> FortiGate 2 HTTPS accessible<br>
+                        <span class="check">&#10003;</span> VPN tunnel: UP (1/1 selectors)<br>
+                        <span class="check">&#10003;</span> Cross-VPC ping: 0.5ms<br>
+                        <br>
+                        <span style="color: #3fb950; font-weight: bold;">All 4 tests passed.</span>
+                    </p>
+                </div>
+            </div>
         </div>
         <div class="slide-number">9 / 12</div>
     </div>
@@ -710,7 +740,7 @@ config firewall policy
                 <div class="label">Modules</div>
             </div>
             <div class="stat-box">
-                <div class="number">7</div>
+                <div class="number">9</div>
                 <div class="label">AI Capabilities</div>
             </div>
         </div>
