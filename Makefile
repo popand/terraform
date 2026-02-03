@@ -1,6 +1,6 @@
 .PHONY: init validate fmt plan apply destroy clean output refresh test \
 	plan-agent plan-full apply-agent apply-full deploy-agent deploy-full \
-	destroy-agent destroy-full build-ui clean-ui report sync-terraform
+	destroy-agent destroy-full build-ui deploy-ui clean-ui report sync-terraform
 
 # Initialize Terraform and download providers
 init:
@@ -99,8 +99,18 @@ clean-ui:
 	rm -rf chat-ui/dist
 	rm -rf chat-ui/node_modules/.vite
 
-# Build Chat UI React application
+# Build Chat UI React application (fetches API config from Terraform/SSM)
 build-ui:
+	@echo "Fetching API configuration..."
+	@API_ENDPOINT=$$(terraform output -raw chat_ui_api_endpoint 2>/dev/null) && \
+	API_KEY=$$(aws ssm get-parameter --name "/terraform-chat/api-key" --with-decryption --query Parameter.Value --output text 2>/dev/null) && \
+	if [ -n "$$API_ENDPOINT" ] && [ -n "$$API_KEY" ]; then \
+		echo "VITE_API_ENDPOINT=$$API_ENDPOINT" > chat-ui/.env && \
+		echo "VITE_API_KEY=$$API_KEY" >> chat-ui/.env && \
+		echo "Updated chat-ui/.env with current API configuration"; \
+	else \
+		echo "Warning: Could not fetch API config. Using existing .env file."; \
+	fi
 	cd chat-ui && npm install && npm run build
 
 # Setup: init, validate, and plan
@@ -151,6 +161,23 @@ sync-terraform:
 		echo "Bedrock Agent not enabled or bucket not found. Skipping S3 sync."; \
 	fi
 
+# Deploy Chat UI to S3 and invalidate CloudFront cache
+deploy-ui: build-ui
+	@echo "Deploying Chat UI to S3..."
+	@BUCKET=$$(terraform output -raw chat_ui_bucket 2>/dev/null) && \
+	CF_ID=$$(terraform output -raw chat_ui_cloudfront_id 2>/dev/null) && \
+	if [ -n "$$BUCKET" ]; then \
+		aws s3 sync chat-ui/dist/ s3://$$BUCKET --delete && \
+		echo "Deployed to s3://$$BUCKET"; \
+		if [ -n "$$CF_ID" ]; then \
+			aws cloudfront create-invalidation --distribution-id $$CF_ID --paths "/*" && \
+			echo "CloudFront cache invalidation started"; \
+		fi; \
+	else \
+		echo "Error: Chat UI bucket not found. Run 'make apply-full' first."; \
+		exit 1; \
+	fi
+
 # Start Chat UI development server (mock mode)
 dev-ui:
 	cd chat-ui && npm install && npm run dev
@@ -188,7 +215,8 @@ help:
 	@echo "    destroy-full-auto  - Destroy full stack without confirmation"
 	@echo ""
 	@echo "  Chat UI:"
-	@echo "    build-ui      - Build React chat application"
+	@echo "    build-ui      - Build React chat application (auto-fetches API config)"
+	@echo "    deploy-ui     - Build and deploy UI to S3 + invalidate CloudFront"
 	@echo "    dev-ui        - Start local dev server (mock mode)"
 	@echo "    clean-ui      - Remove UI build artifacts"
 	@echo ""
