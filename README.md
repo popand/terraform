@@ -72,9 +72,9 @@ The following credentials have been generated for this deployment:
 | Item | Value |
 |------|-------|
 | **FortiGate Admin Username** | `admin` |
-| **FortiGate Admin Password** | `Y7EcQHLSbDIjP9zC` |
-| **VPN Pre-Shared Key** | `omu3wJR0m462y5JGyJHgy9nV` |
-| **SSH Private Key** | `fortigate-demo-key.pem` |
+| **FortiGate Admin Password** | `****************` |
+| **VPN Pre-Shared Key** | `****************` |
+| **SSH Private Key** | `****************` |
 
 > **Note:** These credentials are stored in `terraform.tfvars` (gitignored). Change them for production use.
 
