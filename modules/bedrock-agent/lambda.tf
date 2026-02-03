@@ -52,6 +52,13 @@ resource "aws_lambda_function" "analyze" {
   memory_size      = var.lambda_memory
   source_code_hash = data.archive_file.analyze.output_base64sha256
 
+  environment {
+    variables = {
+      TERRAFORM_BUCKET = aws_s3_bucket.terraform_files.id
+      OUTPUT_BUCKET    = aws_s3_bucket.output_docs.id
+    }
+  }
+
   tags = var.tags
 }
 

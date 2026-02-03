@@ -2,14 +2,19 @@
 Lambda 3: Generate Documentation
 Reads Terraform files and generates concise markdown documentation inline.
 Uses Bedrock Claude to create a summary suitable for chat display.
+Saves full documentation to S3 with pre-signed download URLs.
 """
 
 import boto3
 import json
 import os
+from datetime import datetime
 
 s3_client = boto3.client('s3')
 bedrock_runtime = boto3.client('bedrock-runtime')
+
+# Output bucket for generated docs
+OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET')
 
 
 def lambda_handler(event, context):
@@ -39,10 +44,16 @@ def lambda_handler(event, context):
         # Generate concise documentation using Bedrock
         documentation = generate_concise_docs(terraform_content)
 
+        # Save to S3 and get download links
+        download_links = []
+        if OUTPUT_BUCKET:
+            download_links = save_documentation_to_s3(documentation, terraform_content)
+
         result = {
             'status': 'success',
             'documentation': documentation,
-            'message': 'Documentation generated successfully'
+            'message': 'Documentation generated successfully',
+            'download_links': download_links
         }
 
         return format_response(event, result, 200)
@@ -52,6 +63,60 @@ def lambda_handler(event, context):
             'error': str(e),
             'message': 'Failed to generate documentation'
         }, 500)
+
+
+def save_documentation_to_s3(documentation, terraform_content):
+    """Save documentation to S3 and return pre-signed download URLs."""
+    download_links = []
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+
+    try:
+        # Save main documentation
+        doc_key = f'docs/INFRASTRUCTURE-{timestamp}.md'
+        s3_client.put_object(
+            Bucket=OUTPUT_BUCKET,
+            Key=doc_key,
+            Body=documentation.encode('utf-8'),
+            ContentType='text/markdown'
+        )
+
+        # Generate pre-signed URL (valid for 1 hour)
+        doc_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': OUTPUT_BUCKET, 'Key': doc_key},
+            ExpiresIn=3600
+        )
+        download_links.append({
+            'name': 'INFRASTRUCTURE.md',
+            'description': 'Full infrastructure documentation',
+            'url': doc_url
+        })
+
+        # Also save a "latest" version
+        latest_key = 'docs/INFRASTRUCTURE-latest.md'
+        s3_client.put_object(
+            Bucket=OUTPUT_BUCKET,
+            Key=latest_key,
+            Body=documentation.encode('utf-8'),
+            ContentType='text/markdown'
+        )
+
+        latest_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': OUTPUT_BUCKET, 'Key': latest_key},
+            ExpiresIn=3600
+        )
+        download_links.append({
+            'name': 'INFRASTRUCTURE-latest.md',
+            'description': 'Latest documentation (always updated)',
+            'url': latest_url
+        })
+
+    except Exception as e:
+        # Don't fail if S3 save fails, just skip download links
+        print(f"Failed to save to S3: {e}")
+
+    return download_links
 
 
 def read_terraform_files(bucket):

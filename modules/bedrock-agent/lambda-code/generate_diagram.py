@@ -27,8 +27,9 @@ def lambda_handler(event, context):
             'message': 'TERRAFORM_BUCKET must be configured'
         }, 500)
 
-    # Get diagram type from parameters
+    # Get diagram type and format from parameters
     diagram_type = 'architecture'  # default
+    output_format = 'ascii'  # default to ascii for better chat display
     if 'actionGroup' in event:
         params = {}
         if 'parameters' in event:
@@ -40,8 +41,10 @@ def lambda_handler(event, context):
                 for prop in body['properties']:
                     params[prop['name']] = prop['value']
         diagram_type = params.get('diagram_type', 'architecture')
+        output_format = params.get('format', 'ascii')
     else:
         diagram_type = event.get('diagram_type', 'architecture')
+        output_format = event.get('format', 'ascii')
 
     try:
         # For "deployed" diagram type, read from live infrastructure
@@ -68,14 +71,18 @@ def lambda_handler(event, context):
                 }, 404)
 
             # Generate diagram using Bedrock
-            diagram = generate_mermaid_diagram(terraform_content, diagram_type)
-            message = 'Architecture diagram generated successfully. The diagram below shows the infrastructure layout.'
+            if output_format == 'mermaid':
+                diagram = generate_mermaid_diagram(terraform_content, diagram_type)
+                message = 'Architecture diagram generated successfully. The diagram below shows the infrastructure layout.'
+            else:
+                diagram = generate_ascii_diagram(terraform_content, diagram_type)
+                message = 'ASCII architecture diagram generated successfully.'
 
         result = {
             'status': 'success',
             'diagram_type': diagram_type,
             'diagram': diagram,
-            'format': 'mermaid',
+            'format': output_format,
             'message': message
         }
 
@@ -197,8 +204,116 @@ Generate ONLY the Mermaid diagram code (starting with ```mermaid and ending with
         return generate_basic_diagram()
 
 
+def generate_ascii_diagram(terraform_content, diagram_type):
+    """Use Bedrock to generate an ASCII diagram from Terraform code."""
+
+    if diagram_type == 'network':
+        focus = "Focus on VPCs, subnets, route tables, internet gateways, and network connectivity."
+    elif diagram_type == 'security':
+        focus = "Focus on security groups, firewalls, and security boundaries."
+    elif diagram_type == 'compute':
+        focus = "Focus on EC2 instances and compute resources."
+    else:  # architecture (default)
+        focus = "Show the complete infrastructure including VPCs, subnets, EC2 instances, firewalls, and VPN connections."
+
+    prompt = f"""Analyze this Terraform configuration and create a simple ASCII diagram.
+{focus}
+
+Requirements:
+1. Use simple ASCII box characters: +, -, |, =
+2. Keep it clean and readable - fit within 80 characters width
+3. Use meaningful labels
+4. Show VPCs as large boxes containing their resources
+5. Show VPN tunnel connection between FortiGates with === or ~~~
+6. Use clear arrows for traffic flow: --> or <-->
+
+Example format:
+```
+                              INTERNET
+                                 |
+            +--------------------+--------------------+
+            |                                         |
+    +-------v--------+                       +--------v-------+
+    |    VPC 1       |                       |     VPC 2      |
+    | 10.0.0.0/16    |                       | 10.100.0.0/16  |
+    |                |                       |                |
+    | +------------+ |                       | +------------+ |
+    | | FortiGate1 |=========================| FortiGate2 | |
+    | | 3.x.x.x    | |     VPN Tunnel       | | 3.x.x.x    | |
+    | +-----+------+ |                       | +-----+------+ |
+    |       |        |                       |       |        |
+    | +-----v------+ |                       | +-----v------+ |
+    | | Ubuntu-1   | |                       | | Ubuntu-2   | |
+    | | 10.0.1.10  | |                       | | 10.100.1.10| |
+    | +------------+ |                       | +------------+ |
+    +----------------+                       +----------------+
+```
+
+Terraform Configuration:
+{terraform_content}
+
+Generate ONLY the ASCII diagram inside a code block. No other text. Make it informative with real IP addresses if visible in the config."""
+
+    try:
+        response = bedrock_runtime.invoke_model(
+            modelId='us.anthropic.claude-sonnet-4-20250514-v1:0',
+            contentType='application/json',
+            accept='application/json',
+            body=json.dumps({
+                'anthropic_version': 'bedrock-2023-05-31',
+                'max_tokens': 2000,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': prompt
+                    }
+                ]
+            })
+        )
+
+        response_body = json.loads(response['body'].read())
+        diagram_text = response_body['content'][0]['text']
+
+        # Clean up the response - extract just the diagram
+        if '```' in diagram_text:
+            start = diagram_text.find('```')
+            end = diagram_text.find('```', start + 3)
+            if end != -1:
+                # Get content between the backticks
+                diagram_text = diagram_text[start:end + 3]
+
+        return diagram_text
+
+    except Exception as e:
+        # Fallback to a basic ASCII diagram
+        return generate_basic_ascii_diagram()
+
+
+def generate_basic_ascii_diagram():
+    """Generate a basic fallback ASCII diagram."""
+
+    return """```
+                              INTERNET
+                                 |
+            +--------------------+--------------------+
+            |                                         |
+    +-------v--------+                       +--------v-------+
+    |    VPC 1       |                       |     VPC 2      |
+    | 10.0.0.0/16    |                       | 10.100.0.0/16  |
+    |                |                       |                |
+    | +------------+ |                       | +------------+ |
+    | | FortiGate1 |=========================| FortiGate2 | |
+    | +-----+------+ |     VPN Tunnel       | +-----+------+ |
+    |       |        |                       |       |        |
+    | +-----v------+ |                       | +-----v------+ |
+    | | Ubuntu-1   | |                       | | Ubuntu-2   | |
+    | +------------+ |                       | +------------+ |
+    +----------------+                       +----------------+
+```"""
+
+
 def generate_basic_diagram():
-    """Generate a basic fallback diagram."""
+    """Generate a basic fallback Mermaid diagram."""
 
     return """```mermaid
 graph TD

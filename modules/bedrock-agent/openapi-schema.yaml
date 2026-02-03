@@ -28,8 +28,15 @@ paths:
   /analyze:
     get:
       summary: Analyze Terraform code
-      description: Parse and extract resources, modules, and variables from Terraform files
+      description: Parse and extract resources, modules, and variables from Terraform files. Reads files from S3 automatically. Use module_name parameter to analyze a specific module (e.g., 'fortigate', 'vpc', 'ubuntu', 'bedrock-agent').
       operationId: analyzeTerraformModule
+      parameters:
+        - name: module_name
+          in: query
+          description: Optional module name to filter analysis (e.g., fortigate, vpc, ubuntu). Leave empty for full analysis.
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Analysis complete
@@ -186,7 +193,7 @@ paths:
   /generate-diagram:
     get:
       summary: Generate architecture diagram
-      description: Reads Terraform files and generates a Mermaid diagram of the infrastructure architecture. The diagram is returned as Mermaid code that can be rendered visually. Diagram types available are architecture (default), network, security, or compute.
+      description: Reads Terraform files and generates an architecture diagram. Default format is ASCII for easy display in chat. Use format=mermaid for a visual diagram. Diagram types available are architecture (default), network, security, or compute.
       operationId: generateArchitectureDiagram
       parameters:
         - name: diagram_type
@@ -196,6 +203,13 @@ paths:
           schema:
             type: string
             default: architecture
+        - name: format
+          in: query
+          description: Output format - ascii (default, text-based diagram for chat) or mermaid (visual diagram code)
+          required: false
+          schema:
+            type: string
+            default: ascii
       responses:
         "200":
           description: Diagram generated successfully
@@ -206,13 +220,13 @@ paths:
                 properties:
                   diagram:
                     type: string
-                    description: Mermaid diagram code that can be rendered visually
+                    description: The architecture diagram (ASCII text or Mermaid code)
                   diagram_type:
                     type: string
                     description: Type of diagram generated
                   format:
                     type: string
-                    description: Diagram format (mermaid)
+                    description: Diagram format (ascii or mermaid)
                   message:
                     type: string
                     description: Status message

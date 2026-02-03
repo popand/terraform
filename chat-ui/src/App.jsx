@@ -1,5 +1,31 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
+import mermaid from 'mermaid'
+
+// Initialize mermaid with dark theme
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#7c3aed',
+    primaryTextColor: '#fff',
+    primaryBorderColor: '#5b21b6',
+    lineColor: '#6b7280',
+    secondaryColor: '#1f2937',
+    tertiaryColor: '#374151',
+    background: '#111827',
+    mainBkg: '#1f2937',
+    nodeBorder: '#4b5563',
+    clusterBkg: '#1f2937',
+    clusterBorder: '#4b5563',
+    titleColor: '#f3f4f6',
+    edgeLabelBackground: '#374151'
+  },
+  flowchart: {
+    htmlLabels: true,
+    curve: 'basis'
+  }
+})
 
 // Configuration - will be replaced by environment variables
 const CONFIG = {
@@ -131,6 +157,63 @@ function getMockResponse(message) {
   return mockResponses.default
 }
 
+// Mermaid diagram component
+function MermaidDiagram({ chart }) {
+  const containerRef = useRef(null)
+  const [svg, setSvg] = useState('')
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const renderDiagram = async () => {
+      if (!chart || !containerRef.current) return
+
+      try {
+        const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const { svg } = await mermaid.render(id, chart)
+        setSvg(svg)
+        setError(null)
+      } catch (err) {
+        console.error('Mermaid error:', err)
+        setError(err.message)
+      }
+    }
+
+    renderDiagram()
+  }, [chart])
+
+  if (error) {
+    return (
+      <pre className="bg-dark-400 p-4 rounded-lg overflow-x-auto text-sm text-gray-300">
+        <code>{chart}</code>
+      </pre>
+    )
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="mermaid-container bg-dark-400 p-4 rounded-lg overflow-x-auto"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
+
+// Custom code block renderer for markdown
+function CodeBlock({ node, inline, className, children, ...props }) {
+  const match = /language-(\w+)/.exec(className || '')
+  const language = match ? match[1] : ''
+
+  if (!inline && language === 'mermaid') {
+    return <MermaidDiagram chart={String(children).replace(/\n$/, '')} />
+  }
+
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  )
+}
+
 function App() {
   const [messages, setMessages] = useState([
     {
@@ -226,10 +309,10 @@ What would you like to do?`
   }
 
   const examplePrompts = [
-    "Read and analyze the Terraform files",
-    "What resources does the FortiGate module create?",
-    "Run terraform plan",
-    "Generate documentation for this infrastructure",
+    "Tell me about this infrastructure",
+    "What does the FortiGate module do?",
+    "Show me the deployed instances",
+    "Generate an architecture diagram",
     "Run connectivity tests"
   ]
 
@@ -321,7 +404,7 @@ What would you like to do?`
               >
                 {message.role === 'assistant' ? (
                   <div className="prose prose-invert max-w-none">
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                    <ReactMarkdown components={{ code: CodeBlock }}>{message.content}</ReactMarkdown>
                   </div>
                 ) : (
                   <p className="text-white">{message.content}</p>

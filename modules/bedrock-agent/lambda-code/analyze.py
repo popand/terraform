@@ -1,34 +1,56 @@
 """
 Lambda 2: Analyze Terraform Module
 Parses Terraform content and extracts resource information.
+Reads files from S3 when called via Bedrock Agent.
 """
 
+import boto3
 import json
+import os
 import re
+
+s3_client = boto3.client('s3')
 
 
 def lambda_handler(event, context):
     """
     Parses Terraform content and extracts resource information.
+    When called from Bedrock Agent, reads files from S3 automatically.
 
     Input: { "content": "terraform code...", "filename": "main.tf" }
+    Or via Agent: reads from S3 bucket
     Output: { "resources": [...], "modules": [...], "variables": [...] }
     """
 
-    # Handle Bedrock Agent event format
+    # Handle Bedrock Agent event format - read files from S3
     if 'actionGroup' in event:
+        # Get optional module_name parameter
         params = {}
-        if 'requestBody' in event and 'content' in event['requestBody']:
-            body = event['requestBody']['content'].get('application/json', {})
-            if 'properties' in body:
-                for prop in body['properties']:
-                    params[prop['name']] = prop['value']
+        if 'parameters' in event:
+            for param in event.get('parameters', []):
+                params[param['name']] = param['value']
 
-        content = params.get('content', '')
-        filename = params.get('filename', 'unknown.tf')
+        module_name = params.get('module_name', '')
+
+        # Read all terraform files from S3
+        terraform_bucket = os.environ.get('TERRAFORM_BUCKET')
+        if not terraform_bucket:
+            return format_response(event, {
+                'error': 'Missing TERRAFORM_BUCKET environment variable'
+            }, 500)
+
+        content, files_read = read_terraform_files(terraform_bucket, module_name)
+        if not content:
+            return format_response(event, {
+                'error': 'No Terraform files found',
+                'message': f'No .tf files found in s3://{terraform_bucket}/terraform/'
+            }, 404)
+
+        filename = f"Combined ({len(files_read)} files)"
     else:
         content = event.get('content', '')
         filename = event.get('filename', 'unknown.tf')
+        files_read = [filename] if content else []
 
     if not content:
         return format_response(event, {
@@ -58,8 +80,12 @@ def lambda_handler(event, context):
         # Extract provider configurations
         providers = extract_providers(content)
 
+        # Create human-readable summary
+        summary_text = generate_summary(resources, modules, variables, outputs)
+
         result = {
             'filename': filename,
+            'files_analyzed': files_read if 'files_read' in dir() else [filename],
             'resources': resources,
             'modules': modules,
             'variables': variables,
@@ -67,7 +93,8 @@ def lambda_handler(event, context):
             'data_sources': data_sources,
             'locals': locals_block,
             'providers': providers,
-            'summary': {
+            'summary': summary_text,
+            'counts': {
                 'resource_count': len(resources),
                 'module_count': len(modules),
                 'variable_count': len(variables),
@@ -83,6 +110,84 @@ def lambda_handler(event, context):
             'error': str(e),
             'message': 'Failed to analyze Terraform content'
         }, 500)
+
+
+def read_terraform_files(bucket, module_filter=''):
+    """Read all .tf files from S3 bucket."""
+    content_parts = []
+    files_read = []
+    prefix = 'terraform/'
+
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                if key.endswith('.tf') and not key.endswith('.tfstate'):
+                    # Filter by module if specified
+                    if module_filter:
+                        if f'modules/{module_filter}/' not in key and module_filter.lower() not in key.lower():
+                            continue
+
+                    try:
+                        response = s3_client.get_object(Bucket=bucket, Key=key)
+                        file_content = response['Body'].read().decode('utf-8')
+                        display_name = key.replace(prefix, '')
+                        files_read.append(display_name)
+                        content_parts.append(file_content)
+                    except Exception:
+                        pass
+
+        return '\n\n'.join(content_parts), files_read
+
+    except Exception:
+        return None, []
+
+
+def generate_summary(resources, modules, variables, outputs):
+    """Generate a human-readable summary of the analysis."""
+    lines = []
+
+    # Group resources by type
+    resource_types = {}
+    for r in resources:
+        rtype = r['type']
+        if rtype not in resource_types:
+            resource_types[rtype] = []
+        resource_types[rtype].append(r['name'])
+
+    lines.append("## Infrastructure Analysis\n")
+
+    if modules:
+        lines.append("### Modules Used")
+        for m in modules:
+            lines.append(f"- **{m['name']}**: {m['source']}")
+        lines.append("")
+
+    if resource_types:
+        lines.append("### Resources by Type")
+        for rtype, names in sorted(resource_types.items()):
+            lines.append(f"- **{rtype}** ({len(names)}): {', '.join(names[:5])}" +
+                        (f" ... +{len(names)-5} more" if len(names) > 5 else ""))
+        lines.append("")
+
+    if variables:
+        lines.append(f"### Variables ({len(variables)} total)")
+        for v in variables[:10]:
+            desc = f" - {v['description']}" if v.get('description') else ""
+            lines.append(f"- `{v['name']}`{desc}")
+        if len(variables) > 10:
+            lines.append(f"- ... and {len(variables)-10} more")
+        lines.append("")
+
+    if outputs:
+        lines.append(f"### Outputs ({len(outputs)} total)")
+        for o in outputs[:10]:
+            lines.append(f"- `{o['name']}`")
+        lines.append("")
+
+    return '\n'.join(lines)
 
 
 def extract_resources(content):
