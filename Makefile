@@ -42,8 +42,10 @@ apply-agent:
 	@./scripts/generate-report.sh
 
 # Apply full deployment (agent + chat UI)
-apply-full: build-ui
+# Note: Terraform runs first, then UI is built and deployed with the new API config
+apply-full:
 	terraform apply -var="enable_bedrock_agent=true" -var="enable_chat_ui=true" -auto-approve
+	@$(MAKE) deploy-ui
 	@$(MAKE) sync-terraform
 	@./scripts/generate-report.sh
 

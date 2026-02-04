@@ -335,11 +335,7 @@
         <h2>Key Achievements</h2>
         <div class="stats-grid">
             <div class="stat-box">
-                <div class="number">80</div>
-                <div class="label">AWS Resources</div>
-            </div>
-            <div class="stat-box">
-                <div class="number">4</div>
+                <div class="number">5</div>
                 <div class="label">Terraform Modules</div>
             </div>
             <div class="stat-box">
@@ -347,18 +343,33 @@
                 <div class="label">Lambda Functions</div>
             </div>
             <div class="stat-box">
-                <div class="number">0.5ms</div>
+                <div class="number">2</div>
+                <div class="label">VPCs + VPN</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">&lt;1ms</div>
                 <div class="label">VPN Latency</div>
             </div>
         </div>
-        <div class="highlight-box" style="margin-top: 50px;">
-            <h3 style="margin-top: 0;">Project Scope</h3>
-            <ul>
-                <li>Multi-VPC network with FortiGate firewalls</li>
-                <li>IPSec VPN tunnel (AES-256, SHA-256)</li>
-                <li>AI agent for infrastructure management</li>
-                <li>Fully automated deployment via Terraform</li>
-            </ul>
+        <div class="two-column" style="margin-top: 40px; gap: 40px;">
+            <div class="highlight-box" style="margin: 0;">
+                <h3 style="margin-top: 0;">Infrastructure</h3>
+                <ul style="font-size: 20px;">
+                    <li>Multi-VPC network with FortiGate NGFWs</li>
+                    <li>IPSec VPN tunnel (AES-256, SHA-256)</li>
+                    <li>Private subnets with Ubuntu workloads</li>
+                    <li>Day-0 FortiOS bootstrap configuration</li>
+                </ul>
+            </div>
+            <div class="highlight-box" style="margin: 0; border-left-color: #a78bfa;">
+                <h3 style="margin-top: 0;">AI Agent + Chat UI</h3>
+                <ul style="font-size: 20px;">
+                    <li>Amazon Bedrock with Claude Sonnet</li>
+                    <li>Natural language infrastructure queries</li>
+                    <li>Live AWS resource discovery</li>
+                    <li>React chat interface on CloudFront</li>
+                </ul>
+            </div>
         </div>
         <div class="slide-number">2 / 12</div>
     </div>
@@ -497,38 +508,56 @@ terraform/
         <h2>FortiGate Day-0 Configuration</h2>
         <div class="two-column">
             <div>
-                <h3>Template Variables</h3>
-                <div class="code-block">
+                <h3>Terraform Template</h3>
+                <div class="code-block" style="font-size: 13px;">
 <span class="keyword">user_data</span> = templatefile(
   <span class="string">"fortigate_config.tpl"</span>, {
     hostname        = <span class="variable">var.name</span>
     admin_password  = <span class="variable">var.admin_password</span>
+    private_ip      = <span class="variable">aws_network_interface.private.private_ip</span>
+    private_netmask = <span class="string">"255.255.255.0"</span>
     vpn_name        = <span class="variable">var.vpn_name</span>
     vpn_peer_ip     = <span class="variable">var.vpn_peer_ip</span>
     vpn_psk         = <span class="variable">var.vpn_psk</span>
     local_subnet    = <span class="variable">var.private_subnet_cidr</span>
-    remote_subnet   = <span class="variable">var.remote_subnet</span>
+    remote_subnet   = <span class="variable">var.remote_private_subnet_cidr</span>
 })
                 </div>
+                <h3 style="margin-top: 20px;">Key Features</h3>
+                <ul style="font-size: 18px;">
+                    <li>Dual-NIC: port1 (public), port2 (private)</li>
+                    <li>DHCP on public, static on private</li>
+                    <li>Firewall address objects for subnets</li>
+                    <li>Static route to remote via VPN tunnel</li>
+                </ul>
             </div>
             <div>
-                <h3>Auto-Generated Config</h3>
-                <div class="code-block">
-<span class="comment"># IPSec Phase 1</span>
+                <h3>Generated FortiOS Config</h3>
+                <div class="code-block" style="font-size: 12px;">
+<span class="comment"># System & Interfaces</span>
+config system global
+  set hostname <span class="variable">"FortiGate-1"</span>
+config system interface
+  edit "port1"
+    set mode dhcp
+    set allowaccess ping https ssh
+  edit "port2"
+    set ip <span class="variable">10.0.1.254 255.255.255.0</span>
+
+<span class="comment"># IPSec VPN Phase 1 & 2</span>
 config vpn ipsec phase1-interface
   edit <span class="string">"vpn-to-vpc2"</span>
-    set remote-gw <span class="variable">3.135.21.14</span>
+    set remote-gw <span class="variable">3.147.113.4</span>
     set proposal <span class="variable">aes256-sha256</span>
-    set psksecret <span class="variable">*****</span>
-
-<span class="comment"># IPSec Phase 2</span>
+    set psksecret <span class="variable">********</span>
 config vpn ipsec phase2-interface
   set src-subnet <span class="variable">10.0.1.0/24</span>
   set dst-subnet <span class="variable">10.100.1.0/24</span>
 
-<span class="comment"># Firewall Policies</span>
-config firewall policy
-  <span class="comment"># vpn-outbound, vpn-inbound</span>
+<span class="comment"># Firewall Policies (3 rules)</span>
+<span class="function">vpn-outbound</span>: port2 → vpn-to-vpc2
+<span class="function">vpn-inbound</span>:  vpn-to-vpc2 → port2
+<span class="function">outbound-nat</span>: port2 → port1 (NAT)
                 </div>
             </div>
         </div>
@@ -726,25 +755,45 @@ config firewall policy
     <div class="slide title-slide">
         <h1>Summary</h1>
         <p class="subtitle">Infrastructure as Code + AI-Powered Automation</p>
-        <div style="display: flex; gap: 40px; margin-top: 40px;">
+        <div style="display: flex; gap: 30px; margin-top: 40px;">
             <div class="stat-box">
-                <div class="number">80</div>
-                <div class="label">Resources Deployed</div>
+                <div class="number">5</div>
+                <div class="label">Terraform Modules</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">9</div>
+                <div class="label">Lambda Functions</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">2</div>
+                <div class="label">VPCs + VPN</div>
             </div>
             <div class="stat-box">
                 <div class="number">100%</div>
                 <div class="label">Tests Passing</div>
             </div>
-            <div class="stat-box">
-                <div class="number">4</div>
-                <div class="label">Modules</div>
+        </div>
+        <div style="display: flex; gap: 60px; margin-top: 40px; text-align: left;">
+            <div>
+                <h3 style="color: #00d4ff; margin-bottom: 15px;">What We Built</h3>
+                <ul style="font-size: 20px; color: #a0a0a0;">
+                    <li>Multi-VPC FortiGate infrastructure</li>
+                    <li>IPSec VPN with AES-256 encryption</li>
+                    <li>AI agent with natural language interface</li>
+                    <li>React chat UI on CloudFront</li>
+                </ul>
             </div>
-            <div class="stat-box">
-                <div class="number">9</div>
-                <div class="label">AI Capabilities</div>
+            <div>
+                <h3 style="color: #a78bfa; margin-bottom: 15px;">Key Technologies</h3>
+                <ul style="font-size: 20px; color: #a0a0a0;">
+                    <li>Terraform + AWS Provider</li>
+                    <li>Amazon Bedrock (Claude Sonnet)</li>
+                    <li>FortiOS Day-0 Bootstrap</li>
+                    <li>React + Vite + CloudFront</li>
+                </ul>
             </div>
         </div>
-        <p class="author" style="margin-top: 60px;">Andrei Pop | popand@gmail.com</p>
+        <p class="author" style="margin-top: 50px;">Andrei Pop | popand@gmail.com</p>
         <div class="slide-number">12 / 12</div>
     </div>
 
