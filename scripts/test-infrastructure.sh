@@ -1,7 +1,6 @@
 #!/bin/bash
 #
 # Infrastructure Test Script
-# Tests FortiGate VPN connectivity and cross-VPC communication
 #
 
 set -e
